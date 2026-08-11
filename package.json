@@ -1,0 +1,32 @@
+{
+  "name": "muslumberber",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Müslüm Berber — WhatsApp randevu sistemi",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@berber/api",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "db:migrate": "npm run db:migrate --workspace=@berber/api",
+    "db:seed": "npm run db:seed --workspace=@berber/api",
+    "db:studio": "npm run db:studio --workspace=@berber/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0"
+  }
+}

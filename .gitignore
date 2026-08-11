@@ -1,0 +1,56 @@
+# ─── Sırlar ─────────────────────────────────────────────
+# .env dosyaları ASLA depoya girmez. Sadece .env.example paylaşılır.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ─── Bağımlılıklar ──────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Derleme çıktıları ──────────────────────────────────
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# ─── Test ve kapsam ─────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── Prisma ─────────────────────────────────────────────
+# Üretilen client kodu; migration'lar depoda KALIR
+apps/api/src/generated/
+prisma/*.db
+prisma/*.db-journal
+
+# ─── Loglar ─────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── Yedekler ───────────────────────────────────────────
+backups/
+*.dump
+*.sql.gz
+
+# ─── Editör / işletim sistemi ───────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Geçici ─────────────────────────────────────────────
+tmp/
+temp/
+.cache/
+.vite/

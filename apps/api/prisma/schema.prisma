@@ -1,0 +1,490 @@
+// Müslüm Berber — WhatsApp Randevu Sistemi
+// Veri modeli. Tasarım gerekçeleri için bkz. todo.md → "M1 — Veri Modeli".
+//
+// Dört ilke:
+//   1. Zaman her yerde TIMESTAMPTZ — DATE + TIME ayrı kolonlar değil.
+//   2. Her tabloda shopId — bugün tek dükkan, yarın çok dükkan.
+//   3. Hiçbir şey silinmez — randevu durum değiştirir, berber pasife alınır.
+//   4. Tek doğruluk kaynağı — aynı bilgi iki tabloda tutulmaz.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Neon havuzlanmış bağlantı kullanırken migration'lar doğrudan bağlantı ister.
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────
+// Enum'lar
+// ─────────────────────────────────────────────────────────
+
+enum BarberRole {
+  admin
+  staff
+}
+
+enum AppointmentStatus {
+  pending_confirm
+  confirmed
+  cancelled
+  completed
+  no_show
+}
+
+enum CancelledBy {
+  customer
+  barber
+  system
+}
+
+enum AppointmentSource {
+  whatsapp
+  panel
+}
+
+enum MessageCategory {
+  service
+  utility
+  marketing
+}
+
+enum MessageStatus {
+  queued
+  sent
+  delivered
+  read
+  failed
+}
+
+// ─────────────────────────────────────────────────────────
+// Dükkan
+// ─────────────────────────────────────────────────────────
+
+model Shop {
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+  slug String @unique
+
+  /// IANA saat dilimi. Türkiye kalıcı UTC+3, yaz saati yok.
+  timezone String @default("Europe/Istanbul")
+
+  /// Slot ızgarasının adımı (dakika). Randevu süresi services.durationMin'den okunur.
+  slotStepMin Int @default(45) @map("slot_step_min")
+
+  /// En fazla kaç gün sonrası için randevu alınabilir.
+  maxAdvanceDays Int @default(30) @map("max_advance_days")
+
+  /// Randevuya bu kadar dakikadan az kaldıysa müşteri kendisi iptal edemez.
+  cancelCutoffMin Int @default(120) @map("cancel_cutoff_min")
+
+  /// Chatbot'un onay için beklediği süre (dakika).
+  confirmTimeoutMin Int @default(5) @map("confirm_timeout_min")
+
+  /// Meta WhatsApp phone number id.
+  whatsappPhoneId String? @map("whatsapp_phone_id")
+
+  /// Chatbot müşteriyi yönlendirirken verdiği telefon.
+  contactPhone String? @map("contact_phone")
+
+  privacyPolicyUrl String? @map("privacy_policy_url")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  barbers           Barber[]
+  customers         Customer[]
+  services          Service[]
+  workingHours      WorkingHours[]
+  timeOff           TimeOff[]
+  appointments      Appointment[]
+  chatSessions      ChatSession[]
+  outboundMessages  OutboundMessage[]
+  auditLogs         AuditLog[]
+
+  @@map("shops")
+}
+
+// ─────────────────────────────────────────────────────────
+// Berberler
+// ─────────────────────────────────────────────────────────
+
+model Barber {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  name  String
+  phone String?
+  email String
+
+  /// argon2id ile hashlenir. Ham şifre hiçbir yerde tutulmaz.
+  passwordHash String @map("password_hash")
+
+  role BarberRole @default(staff)
+
+  /// Berber silinmez, pasife alınır — randevu geçmişi korunur.
+  isActive Boolean @default(true) @map("is_active")
+
+  /// Hesap kilitleme sunucu tarafında tutulur; istemci sayacı güvenilir değildir.
+  failedLoginCount Int       @default(0) @map("failed_login_count")
+  lockedUntil      DateTime? @map("locked_until") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  appointments      Appointment[]
+  workingHours      WorkingHours[]
+  timeOff           TimeOff[]        @relation("TimeOffBarber")
+  timeOffCreated    TimeOff[]        @relation("TimeOffCreator")
+  refreshTokens     RefreshToken[]
+  pushSubscriptions PushSubscription[]
+  auditLogs         AuditLog[]
+
+  @@unique([shopId, email])
+  @@index([shopId, isActive])
+  @@map("barbers")
+}
+
+// ─────────────────────────────────────────────────────────
+// Müşteriler
+// ─────────────────────────────────────────────────────────
+
+model Customer {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  /// Chatbot ilk temasta sorar; walk-in randevuda berber girer.
+  name String?
+
+  /// Her zaman E.164: +905321234567
+  phone String
+
+  noShowCount Int @default(0) @map("no_show_count")
+
+  /// Kara liste bilgisi SADECE burada tutulur. Ayrı bir blacklist tablosu yok —
+  /// iki kaynak kaçınılmaz olarak tutarsızlaşır. Kim/ne zaman bilgisi audit_log'da.
+  isBlacklisted Boolean @default(false) @map("is_blacklisted")
+  blacklistNote String? @map("blacklist_note")
+
+  /// Müşteri "DUR" yazdıysa true. Meta politikası gereği sonrasında mesaj gönderilmez.
+  optedOut Boolean @default(false) @map("opted_out")
+
+  /// KVKK aydınlatma bildiriminin gösterildiği an.
+  consentAt DateTime? @map("consent_at") @db.Timestamptz(3)
+
+  /// Müşterinin son mesaj attığı an. WhatsApp 24 saat penceresi bundan hesaplanır.
+  lastInboundAt DateTime? @map("last_inbound_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  appointments     Appointment[]
+  outboundMessages OutboundMessage[]
+
+  @@unique([shopId, phone])
+  @@index([shopId, isBlacklisted])
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────────────────
+// Hizmetler
+// ─────────────────────────────────────────────────────────
+
+model Service {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  name String
+
+  /// ⚠️ 45 sayısının uygulamadaki TEK yeri burası.
+  /// İleride "boyama 90 dakika" demek tek bir UPDATE; slot motoru değişmez.
+  durationMin Int @default(45) @map("duration_min")
+
+  /// Gelir raporu için. Şu an kullanılmıyor, maliyeti sıfır.
+  price Decimal? @db.Decimal(10, 2)
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  appointments Appointment[]
+
+  @@unique([shopId, name])
+  @@index([shopId, isActive, sortOrder])
+  @@map("services")
+}
+
+// ─────────────────────────────────────────────────────────
+// Haftalık çalışma düzeni
+// ─────────────────────────────────────────────────────────
+
+model WorkingHours {
+  id       String @id @default(uuid()) @db.Uuid
+  shopId   String @map("shop_id") @db.Uuid
+  shop     Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  barberId String @map("barber_id") @db.Uuid
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  /// 0 = Pazar ... 6 = Cumartesi (JavaScript Date.getDay() ile aynı)
+  dayOfWeek Int @map("day_of_week")
+
+  /// Dükkanın yerel saati. "09:00" gibi. Saat dilimi shops.timezone'dan gelir.
+  startTime String @map("start_time")
+  endTime   String @map("end_time")
+
+  isWorking Boolean @default(true) @map("is_working")
+
+  @@unique([barberId, dayOfWeek])
+  @@map("working_hours")
+}
+
+// ─────────────────────────────────────────────────────────
+// İzinler ve molalar
+// ─────────────────────────────────────────────────────────
+
+/// v1'deki `closed_days` yerine geçer. Aralık olarak modellendi çünkü
+/// berber öğle arası verir — tam gün kapanış artık özel bir durum.
+model TimeOff {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  /// null = tüm dükkan kapalı (bayram gibi)
+  barberId String? @map("barber_id") @db.Uuid
+  barber   Barber? @relation("TimeOffBarber", fields: [barberId], references: [id], onDelete: Cascade)
+
+  startsAt DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt   DateTime @map("ends_at") @db.Timestamptz(3)
+
+  reason String
+
+  createdById String? @map("created_by") @db.Uuid
+  createdBy   Barber? @relation("TimeOffCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([shopId, startsAt, endsAt])
+  @@index([barberId, startsAt])
+  @@map("time_off")
+}
+
+// ─────────────────────────────────────────────────────────
+// Randevular
+// ─────────────────────────────────────────────────────────
+
+model Appointment {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  barberId String @map("barber_id") @db.Uuid
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Restrict)
+
+  customerId String   @map("customer_id") @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  serviceId String  @map("service_id") @db.Uuid
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  /// ⚠️ DATE + TIME değil. Çakışma kısıtı (EXCLUDE USING gist) bunu gerektiriyor
+  /// ve saat dilimi hatalarını kökten önlüyor.
+  startsAt DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt   DateTime @map("ends_at") @db.Timestamptz(3)
+
+  status AppointmentStatus @default(pending_confirm)
+
+  cancelledBy  CancelledBy? @map("cancelled_by")
+  cancelReason String?      @map("cancel_reason")
+  cancelledAt  DateTime?    @map("cancelled_at") @db.Timestamptz(3)
+
+  /// Walk-in randevular 'panel' kaynaklıdır.
+  source AppointmentSource @default(whatsapp)
+
+  /// pending_confirm durumundaki randevu bu andan sonra otomatik düşer.
+  confirmDeadline DateTime? @map("confirm_deadline") @db.Timestamptz(3)
+
+  /// Hatırlatmanın GÖNDERİLDİĞİ an. Boolean yerine zaman damgası —
+  /// "ne zaman gönderildi" sorusunu da cevaplıyor.
+  reminder1DaySentAt  DateTime? @map("reminder_1day_sent_at") @db.Timestamptz(3)
+  reminder1HourSentAt DateTime? @map("reminder_1hour_sent_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([barberId, startsAt])
+  @@index([customerId, startsAt(sort: Desc)])
+  @@index([shopId, startsAt])
+  @@index([status, confirmDeadline])
+  @@map("appointments")
+}
+
+// ─────────────────────────────────────────────────────────
+// Chatbot oturumları
+// ─────────────────────────────────────────────────────────
+
+model ChatSession {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  phone String @unique
+
+  /// FSM durumu. Geçerli değerler kodda tiplenmiş enum olarak tutulur.
+  state String @default("idle")
+
+  /// Seçilen berber/tarih/saat/hizmet gibi geçici veriler.
+  context Json @default("{}")
+
+  /// 3'e ulaşınca müşteri insana yönlendirilir.
+  invalidInputCount Int @default(0) @map("invalid_input_count")
+
+  lastMessageAt DateTime @default(now()) @map("last_message_at") @db.Timestamptz(3)
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("chat_sessions")
+}
+
+// ─────────────────────────────────────────────────────────
+// Gelen webhook kayıtları
+// ─────────────────────────────────────────────────────────
+
+/// ⚠️ Bu tablonun tek amacı idempotency. Meta, yanıt alamadığında aynı webhook'u
+/// tekrar tekrar gönderir. wamid üzerindeki UNIQUE kısıt olmadan aynı "ONAYLA"
+/// mesajı iki kez işlenir ve çift randevu oluşur.
+model WebhookEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Meta'nın mesaj kimliği. Idempotency'nin tamamı bu kısıta dayanıyor.
+  wamid String @unique
+
+  payload Json
+
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(3)
+  error       String?
+
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  @@index([receivedAt])
+  @@map("webhook_events")
+}
+
+// ─────────────────────────────────────────────────────────
+// Giden mesaj kayıtları
+// ─────────────────────────────────────────────────────────
+
+/// Hata ayıklama ve maliyet takibi için. Ay sonunda Meta faturası sürpriz olmasın.
+model OutboundMessage {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  customerId String?   @map("customer_id") @db.Uuid
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  /// Meta'nın döndürdüğü mesaj kimliği (gönderim başarılıysa).
+  wamid String? @unique
+
+  /// null = serbest metin (24 saat penceresi içinde gönderildi)
+  templateName String? @map("template_name")
+
+  category MessageCategory?
+
+  /// Mesajın kısa özeti. Tam metin loglanmaz.
+  bodyPreview String @map("body_preview")
+
+  status    MessageStatus @default(queued)
+  errorCode String?       @map("error_code")
+  errorText String?       @map("error_text")
+
+  sentAt    DateTime? @map("sent_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([shopId, createdAt])
+  @@index([customerId, createdAt])
+  @@map("outbound_messages")
+}
+
+// ─────────────────────────────────────────────────────────
+// Oturum yenileme jetonları
+// ─────────────────────────────────────────────────────────
+
+/// "Beni hatırla 30 gün" için. 30 günlük JWT'yi localStorage'a koymak,
+/// çalınması halinde iptal edilemeyen bir anahtar bırakmak demektir.
+model RefreshToken {
+  id       String @id @default(uuid()) @db.Uuid
+  barberId String @map("barber_id") @db.Uuid
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  /// Ham jeton saklanmaz; sadece SHA-256 özeti.
+  tokenHash String @unique @map("token_hash")
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  userAgent String? @map("user_agent")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([barberId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────
+// Push bildirim abonelikleri
+// ─────────────────────────────────────────────────────────
+
+model PushSubscription {
+  id       String @id @default(uuid()) @db.Uuid
+  barberId String @map("barber_id") @db.Uuid
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  userAgent String? @map("user_agent")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([barberId])
+  @@map("push_subscriptions")
+}
+
+// ─────────────────────────────────────────────────────────
+// Denetim kaydı
+// ─────────────────────────────────────────────────────────
+
+model AuditLog {
+  id     String @id @default(uuid()) @db.Uuid
+  shopId String @map("shop_id") @db.Uuid
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  /// null = sistem (cron işleri gibi)
+  actorId String? @map("actor_id") @db.Uuid
+  actor   Barber? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// 'appointment.cancel', 'customer.blacklist' gibi
+  action String
+
+  entityType String  @map("entity_type")
+  entityId   String? @map("entity_id") @db.Uuid
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([shopId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@map("audit_log")
+}

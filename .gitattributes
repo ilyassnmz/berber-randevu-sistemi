@@ -1,0 +1,11 @@
+# Depoda her şey LF ile saklanır; Windows'ta çalışırken checkout sırasında
+# dönüştürülür. Bu olmadan Windows/Linux arasında sahte satır sonu farkları çıkar.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
