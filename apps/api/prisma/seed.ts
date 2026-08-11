@@ -48,8 +48,8 @@ const WORKING_DAYS = [
 ] as const;
 
 const BARBERS = [
-  { name: 'Müslüm', email: 'muslum@muslumberber.com', role: 'admin' as const },
-  { name: 'Fırat', email: 'firat@muslumberber.com', role: 'staff' as const },
+  { name: 'Müslüm', email: 'muslum@ozdede.com', role: 'admin' as const },
+  { name: 'Fırat', email: 'firat@ozdede.com', role: 'staff' as const },
 ];
 
 async function main(): Promise<void> {

@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { corsOrigins, isTest } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
+import { authRouter } from './routes/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp(): Express {
@@ -81,6 +82,7 @@ export function createApp(): Express {
       limit: 60,
       standardHeaders: 'draft-7',
       legacyHeaders: false,
+      skip: () => isTest,
       message: {
         error: {
           code: 'RATE_LIMITED',
@@ -91,7 +93,7 @@ export function createApp(): Express {
   );
 
   // ── API rotaları ───────────────────────────────────────
-  // v1 rotaları buraya bağlanacak: /api/v1/auth, /api/v1/appointments, ...
+  app.use('/api/v1/auth', authRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
