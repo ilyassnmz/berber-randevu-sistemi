@@ -11,6 +11,7 @@ import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { appointmentsRouter } from './routes/appointments.js';
+import { webhookRouter } from './routes/webhook.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp(): Express {
@@ -72,6 +73,11 @@ export function createApp(): Express {
 
   // ── Sağlık kontrolleri (rate limit'ten önce) ───────────
   app.use(healthRouter);
+
+  // ── WhatsApp webhook ───────────────────────────────────
+  // /api altında DEĞİL: genel IP bazlı hız sınırı buraya uygulanamaz, çünkü
+  // tüm webhook trafiği Meta'nın IP'lerinden gelir ve tek istemci gibi görünür.
+  app.use('/webhook', webhookRouter);
 
   // ── Genel hız sınırı ───────────────────────────────────
   // Webhook'un kendi sınırı var (telefon numarasına göre); IP bazlı sınır

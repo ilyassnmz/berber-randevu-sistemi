@@ -13,15 +13,15 @@ Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 | Sprint 0 — Temel altyapı | ✅ Tamamlandı |
 | M1 — Veri modeli | ✅ Tamamlandı |
 | M2 — Slot motoru | ✅ Tamamlandı |
-| M3 — Backend API | 🟡 Kimlik doğrulama + randevular hazır |
-| M4 — Güvenlik | 🟡 Kimlik doğrulama tarafı hazır |
-| M5 — WhatsApp | ⚪ Başlanmadı |
-| M6 — Chatbot | ⚪ Başlanmadı |
+| M3 — Backend API | ✅ Tamamlandı |
+| M4 — Güvenlik | ✅ Tamamlandı |
+| M5 — WhatsApp | ✅ Kod hazır — Meta hesabı bekleniyor |
+| M6 — Chatbot | ✅ Tamamlandı |
 | M7 — Panel (PWA) | ⚪ Başlanmadı |
 
-**Hazır olanlar:** Veri modeli (13 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama (jeton rotasyonu, hesap kilitleme, rol yetkisi) · randevu API'si (walk-in, iptal, tamamlandı, gelmedi, erteleme, listeleme) · denetim kaydı · sağlık kontrolleri
+**Hazır olanlar:** Veri modeli (13 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in dahil) · WhatsApp webhook (imza doğrulaması + idempotency) · chatbot (randevu alma, iptal, listeleme) · denetim kaydı
 
-**Sıradaki:** WhatsApp webhook → chatbot → panel
+**Sıradaki:** Yönetim paneli (PWA) → hatırlatma cron'ları → yayın
 
 ---
 
@@ -192,7 +192,34 @@ npm run test:integration --workspace=@berber/api
 
 ---
 
+## WhatsApp — Meta hesabı olmadan geliştirme
+
+Bot numarası hazır olmadan da chatbot'un tamamı çalışıyor ve test ediliyor.
+
+`.env` içindeki `WHATSAPP_*` alanları boşsa uygulama **sahte istemciye** düşer:
+mesajlar hiçbir yere gönderilmez, konsola yazılır ve bellekte tutulur. Chatbot
+akışının 27 testi bu istemci üzerinden koşuyor.
+
+Gerçek numara geldiğinde yapılacaklar:
+
+1. `npm run whatsapp:templates --workspace=@berber/api` → çıktıyı Meta paneline gir
+   (şablon onayı 1-3 gün sürer, onaysız hatırlatma gönderilemez)
+2. `.env` içine `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`,
+   `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` gir
+3. Meta panelinde webhook adresi: `https://<alan-adı>/webhook/whatsapp`
+
+Kodda hiçbir değişiklik gerekmiyor — istemci seçimi yapılandırmadan geliyor.
+
+> ℹ️ Doğrulanmamış Meta hesabı 24 saatte 250 benzersiz müşteriye mesaj
+> gönderebilir. Bir berber için fazlasıyla yeterli; lansman Business
+> Verification'ı beklemek zorunda değil.
+
+---
+
 ## Notlar
 
-- **OneDrive**: Proje OneDrive klasöründe. `node_modules` senkronize edilirse kurulum yavaşlar ve dosya kilidi hataları çıkabilir. Sorun yaşarsan OneDrive ayarlarından bu klasörü senkronizasyon dışı bırak.
-- **Prisma uyarısı**: `package.json#prisma` alanı Prisma 7'de kaldırılacak. Şu an çalışıyor; geçiş sırasında `prisma.config.ts`'e taşınacak.
+- **Konum**: Proje bilerek OneDrive **dışında** (`C:\Projeler\Berber`). OneDrive
+  içindeyken `node_modules` senkronizasyonu Prisma'nın dosya değiştirmesini
+  engelliyor ve `EPERM` hataları çıkıyordu.
+- **Prisma uyarısı**: `package.json#prisma` alanı Prisma 7'de kaldırılacak. Şu an
+  çalışıyor; geçiş sırasında `prisma.config.ts`'e taşınacak.
