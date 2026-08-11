@@ -11,11 +11,17 @@ Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 | Aşama | Durum |
 |---|---|
 | Sprint 0 — Temel altyapı | ✅ Tamamlandı |
-| MVP | 🟡 Başlıyor |
+| M1 — Veri modeli | ✅ Tamamlandı |
+| M2 — Slot motoru | ✅ Tamamlandı |
+| M3 — Backend API | 🟡 Kimlik doğrulama + randevular hazır |
+| M4 — Güvenlik | 🟡 Kimlik doğrulama tarafı hazır |
+| M5 — WhatsApp | ⚪ Başlanmadı |
+| M6 — Chatbot | ⚪ Başlanmadı |
+| M7 — Panel (PWA) | ⚪ Başlanmadı |
 
-**Hazır olanlar:** Monorepo iskeleti · veri modeli (13 tablo, Neon'a uygulandı) · çakışma kısıtı (gerçek veritabanına karşı doğrulandı) · slot motoru · ortam doğrulama · loglama · hata yönetimi · sağlık kontrolleri · başlangıç verisi
+**Hazır olanlar:** Veri modeli (13 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama (jeton rotasyonu, hesap kilitleme, rol yetkisi) · randevu API'si (walk-in, iptal, tamamlandı, gelmedi, erteleme, listeleme) · denetim kaydı · sağlık kontrolleri
 
-**Sıradaki:** Kimlik doğrulama (giriş/çıkış) → randevu API'si → WhatsApp webhook → chatbot → panel
+**Sıradaki:** WhatsApp webhook → chatbot → panel
 
 ---
 
@@ -173,12 +179,16 @@ npm test
 npm run test:integration --workspace=@berber/api
 ```
 
-7 test, tamamı çakışma kısıtını sınar. Bunlar birim testi olarak yazılamaz:
-kısıt PostgreSQL'in içinde yaşıyor, uygulama kodunda değil. Sahte bir
-veritabanıyla test etmek tam da sınanmak istenen şeyi atlamak olurdu.
+59 test:
 
-En önemlisi sonuncusu: aynı slota **eşzamanlı üç rezervasyon** gönderiliyor ve
-tam olarak birinin başarılı olduğu doğrulanıyor.
+- **Çakışma kısıtı** (7) — birim testi olarak yazılamaz, çünkü kısıt PostgreSQL'in
+  içinde yaşıyor. Sahte bir veritabanıyla test etmek tam da sınanmak istenen şeyi
+  atlamak olurdu. En önemlisi: aynı slota **eşzamanlı üç rezervasyon** gönderiliyor,
+  tam olarak birinin başarılı olduğu doğrulanıyor.
+- **Kimlik doğrulama** (22) — jeton rotasyonu, çalınmış jeton tespiti, hesap
+  kilitleme, kullanıcı sayımına karşı tek tip hata mesajı
+- **Randevu API'si** (30) — yetki sınırları (staff başkasının verisine erişemiyor),
+  walk-in, durum geçişleri, erteleme, sayfalama
 
 ---
 

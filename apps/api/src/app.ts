@@ -10,6 +10,7 @@ import { corsOrigins, isTest } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
+import { appointmentsRouter } from './routes/appointments.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp(): Express {
@@ -94,6 +95,7 @@ export function createApp(): Express {
 
   // ── API rotaları ───────────────────────────────────────
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/appointments', appointmentsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

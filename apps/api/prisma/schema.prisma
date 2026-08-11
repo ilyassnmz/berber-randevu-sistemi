@@ -163,7 +163,11 @@ model Customer {
   name String?
 
   /// Her zaman E.164: +905321234567
-  phone String
+  ///
+  /// null olabilir: kapıdan gelen müşteri numarasını vermek zorunda değil.
+  /// PostgreSQL NULL'ları benzersizlik açısından birbirinden farklı sayar,
+  /// bu yüzden numarasız birden fazla müşteri kaydı sorun çıkarmaz.
+  phone String?
 
   noShowCount Int @default(0) @map("no_show_count")
 
