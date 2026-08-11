@@ -10,12 +10,12 @@ Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 
 | Aşama | Durum |
 |---|---|
-| Sprint 0 — Temel altyapı | 🟡 Devam ediyor |
-| MVP | ⚪ Başlanmadı |
+| Sprint 0 — Temel altyapı | ✅ Tamamlandı |
+| MVP | 🟡 Başlıyor |
 
-**Hazır olanlar:** Monorepo iskeleti · veri modeli (13 tablo) · çakışma kısıtı · slot motoru (+49 test) · ortam doğrulama · loglama · hata yönetimi · sağlık kontrolleri
+**Hazır olanlar:** Monorepo iskeleti · veri modeli (13 tablo, Neon'a uygulandı) · çakışma kısıtı (gerçek veritabanına karşı doğrulandı) · slot motoru · ortam doğrulama · loglama · hata yönetimi · sağlık kontrolleri · başlangıç verisi
 
-**Sıradaki:** Neon veritabanı bağlantısı → migration → kimlik doğrulama → randevu API'si → WhatsApp webhook
+**Sıradaki:** Kimlik doğrulama (giriş/çıkış) → randevu API'si → WhatsApp webhook → chatbot → panel
 
 ---
 
@@ -59,23 +59,18 @@ WhatsApp ayarları geliştirme sırasında boş kalabilir — bot devre dışı 
 
 ### 4. Veritabanı şemasını oluştur
 
-⚠️ **Bu adım iki parçalı.** Çakışma kısıtı Prisma şemasıyla ifade edilemediği için migration'a elle ekleniyor.
-
 ```bash
-cd apps/api
-
-# Migration dosyasını üret ama HENÜZ UYGULAMA
-npx prisma migrate dev --name init --create-only
-```
-
-Ardından oluşan `prisma/migrations/<tarih>_init/migration.sql` dosyasının **sonuna**, `prisma/sql/appointment-overlap-constraint.sql` dosyasının içeriğini ekle. Sonra uygula:
-
-```bash
-npx prisma migrate dev
-npm run db:seed
+npm run db:migrate:deploy --workspace=@berber/api
+npm run db:seed --workspace=@berber/api
 ```
 
 Seed komutu Müslüm ve Fırat için **rastgele şifreler üretip bir kez ekrana basar** — bir parola yöneticisine kaydet, şifreler geri alınamaz.
+
+> **Yeni migration eklerken dikkat:** Çakışma kısıtı Prisma şemasıyla ifade
+> edilemiyor, o yüzden ilk migration dosyasının sonuna elle eklendi
+> ([kaynak](apps/api/prisma/sql/appointment-overlap-constraint.sql)).
+> `prisma migrate dev` bunu görüp şemayla uyumsuz sanabilir; şüphe duyarsan
+> `--create-only` ile üret, SQL'i gözden geçir, sonra uygula.
 
 ### 5. Çalıştır
 
@@ -160,15 +155,30 @@ Türkiye 2016'dan beri kalıcı UTC+3 ve yaz saati uygulamıyor, ama offset koda
 
 ## Test
 
+### Birim testleri — veritabanı gerektirmez
+
 ```bash
 npm test
 ```
 
-Şu an 58 test var. Yoğunlaştıkları yer, hataların yaşayacağı iki modül:
+58 test. Yoğunlaştıkları yer, hataların yaşayacağı modüller:
 
 - **Slot motoru** (31 test) — çalışma saatleri, izinler, dolu saatler, geçmiş saatler, rezervasyon penceresi, değişken süre
 - **Saat dilimi hesapları** (18 test) — UTC dönüşümü, gün sınırları, aralık çakışması
 - **Telefon normalleştirme** (9 test) — aynı numaranın 8 farklı yazımı tek forma iner
+
+### Entegrasyon testleri — gerçek veritabanına bağlanır
+
+```bash
+npm run test:integration --workspace=@berber/api
+```
+
+7 test, tamamı çakışma kısıtını sınar. Bunlar birim testi olarak yazılamaz:
+kısıt PostgreSQL'in içinde yaşıyor, uygulama kodunda değil. Sahte bir
+veritabanıyla test etmek tam da sınanmak istenen şeyi atlamak olurdu.
+
+En önemlisi sonuncusu: aynı slota **eşzamanlı üç rezervasyon** gönderiliyor ve
+tam olarak birinin başarılı olduğu doğrulanıyor.
 
 ---
 

@@ -3,7 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    // Yalnızca birim testleri. Veritabanı gerektiren entegrasyon testleri
+    // vitest.integration.config.ts ile ayrı çalışır.
+    include: ['src/**/*.test.ts'],
     // Testlerde gerçek env doğrulaması çalışmasın diye asgari değerler
     env: {
       NODE_ENV: 'test',
