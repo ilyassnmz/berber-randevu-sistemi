@@ -17,11 +17,14 @@ Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 | M4 — Güvenlik | ✅ Tamamlandı |
 | M5 — WhatsApp | ✅ Kod hazır — Meta hesabı bekleniyor |
 | M6 — Chatbot | ✅ Tamamlandı |
-| M7 — Panel (PWA) | ⚪ Başlanmadı |
+| M7 — Panel (PWA) | ✅ Tamamlandı |
+| M9 — Hatırlatma cron'ları | ✅ Tamamlandı |
 
-**Hazır olanlar:** Veri modeli (13 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in dahil) · WhatsApp webhook (imza doğrulaması + idempotency) · chatbot (randevu alma, iptal, listeleme) · denetim kaydı
+**Hazır olanlar:** Veri modeli (14 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in dahil) · WhatsApp webhook (imza doğrulaması + idempotency) · chatbot (randevu alma, iptal, listeleme) · yönetim paneli (PWA — giriş, günlük takvim, walk-in, randevu detayı, kara liste) · hatırlatma cron'ları (1 gün / 1 saat önce) · denetim kaydı
 
-**Sıradaki:** Yönetim paneli (PWA) → hatırlatma cron'ları → yayın
+**Sıradaki:** WhatsApp Business hesabının Meta'da kurulması → üretime alma (Hetzner + domain)
+
+**Kapsam dışı bırakılanlar (v1.1/v1.2'ye ertelendi):** push bildirim, ayarlar ekranı (çalışma saatleri/izin/hizmet yönetimi paneli — şu an yalnızca DB'den), müşteri geçmişi ekranı, istatistikler. Ayrıntı için [todo.md](todo.md).
 
 ---
 
@@ -80,11 +83,17 @@ Seed komutu Müslüm ve Fırat için **rastgele şifreler üretip bir kez ekrana
 
 ### 5. Çalıştır
 
+İki ayrı terminalde:
+
 ```bash
-npm run dev
+npm run dev --workspace=@berber/api      # → http://localhost:3000/healthz
 ```
 
-→ http://localhost:3000/healthz
+```bash
+npm run dev --workspace=@berber/panel    # → http://localhost:5173
+```
+
+Panel, `/api` isteklerini geliştirme sırasında otomatik olarak API'ye yönlendirir (bkz. `apps/panel/vite.config.ts`). Seed adımında verilen e-posta/şifre ile giriş yapılabilir.
 
 ---
 
@@ -92,13 +101,17 @@ npm run dev
 
 | Komut | Ne yapar |
 |---|---|
-| `npm run dev` | API'yi geliştirme modunda başlatır (değişiklikte yeniden yükler) |
-| `npm test` | Tüm testleri çalıştırır |
-| `npm run typecheck` | Tip kontrolü |
-| `npm run build` | Üretim derlemesi |
-| `npm run db:migrate` | Migration uygular |
-| `npm run db:seed` | Başlangıç verisini yükler |
-| `npm run db:studio` | Veritabanını tarayıcıda görüntüler |
+| `npm run dev --workspace=@berber/api` | API'yi geliştirme modunda başlatır (değişiklikte yeniden yükler) + zamanlanmış işleri çalıştırır |
+| `npm run dev --workspace=@berber/panel` | Paneli geliştirme modunda başlatır |
+| `npm test` | Birim testlerini çalıştırır (tüm workspace'ler) |
+| `npm run test:integration --workspace=@berber/api` | Gerçek veritabanına karşı entegrasyon testleri |
+| `npm run typecheck` | Tip kontrolü (tüm workspace'ler) |
+| `npm run build` | Üretim derlemesi (tüm workspace'ler) |
+| `npm run db:migrate` | Migration uygular (geliştirme) |
+| `npm run db:migrate:deploy --workspace=@berber/api` | Migration uygular (üretim) |
+| `npm run db:seed --workspace=@berber/api` | Başlangıç verisini yükler |
+| `npm run db:studio --workspace=@berber/api` | Veritabanını tarayıcıda görüntüler |
+| `npm run whatsapp:templates --workspace=@berber/api` | Meta'ya girilecek şablon metinlerini yazdırır |
 
 ---
 
@@ -107,12 +120,17 @@ npm run dev
 ```
 apps/api/
   prisma/
-    schema.prisma      → Veri modeli (13 tablo)
+    schema.prisma      → Veri modeli (14 tablo)
     seed.ts            → Başlangıç verisi
     sql/               → Prisma'nın ifade edemediği SQL (çakışma kısıtı)
   src/
     config/env.ts      → Ortam doğrulama — eksikse uygulama açılışta ölür
     db/client.ts       → Prisma istemcisi
+    jobs/
+      lock.ts          → Satır tabanlı iş kilidi (job_locks tablosu)
+      reminders.ts     → 1 gün / 1 saat önce hatırlatma
+      cleanup.ts       → Süresi dolmuş kayıt temizliği
+      scheduler.ts     → node-cron zamanlaması
     lib/
       time.ts          → Saat dilimi hesapları
       errors.ts        → Hata tipleri + veritabanı hata çevirisi
@@ -121,6 +139,15 @@ apps/api/
     routes/            → HTTP uçları
     services/
       slots.ts         → Slot motoru ⭐
+      whatsapp/        → Meta istemcisi + sahte istemci + imza doğrulama
+      chatbot/         → Durum makinesi
+apps/panel/
+  src/
+    lib/
+      api.ts           → fetch sarmalayıcı — jeton yenileme, 401 yönetimi
+      authStore.ts      → Oturum durumu (jeton BELLEKTE, localStorage'da değil)
+    pages/              → LoginPage, CalendarPage
+    components/         → AppointmentCard, WalkInModal, AppointmentDetailModal...
 packages/shared/
   src/
     constants.ts       → Durum enum'ları
@@ -157,6 +184,23 @@ Veritabanında `TIMESTAMPTZ`, yerel saat yalnızca gösterimde. Çalışma saatl
 
 Türkiye 2016'dan beri kalıcı UTC+3 ve yaz saati uygulamıyor, ama offset koda gömülmedi — `Intl` üzerinden hesaplanıyor.
 
+### 4. Cron kilitleri Postgres advisory lock DEĞİL, satır tabanlı
+
+Plan başlangıçta `pg_try_advisory_lock` öngörüyordu. Uygulama sırasında Neon'un
+havuzlanmış bağlantısına (PgBouncer, transaction modu) karşı ölçüldüğünde, iki
+eşzamanlı çağrının **ikisinin de** kilidi alabildiği görüldü — advisory lock'lar
+oturum sürekliliğine dayanıyor ve havuzlama bunu bozabiliyor.
+
+Çözüm `job_locks` tablosuna atomik `INSERT ... ON CONFLICT ... WHERE locked_until
+< now()`: sıradan bir DML işlemi olduğu için bağlantı havuzlamasından etkilenmiyor.
+Bkz. [`src/jobs/lock.ts`](apps/api/src/jobs/lock.ts).
+
+### 5. Panel'de erişim jetonu `localStorage`'da değil, bellekte
+
+Sayfa yenilenince kaybolur; `apps/panel/src/routes/ProtectedRoute.tsx` açılışta
+httpOnly çerezle sessizce yeni jeton alır. `localStorage`'a yazılan bir jeton,
+siteye sızan herhangi bir betikle (XSS) okunabilir olurdu.
+
 ---
 
 ## Test
@@ -167,11 +211,12 @@ Türkiye 2016'dan beri kalıcı UTC+3 ve yaz saati uygulamıyor, ama offset koda
 npm test
 ```
 
-58 test. Yoğunlaştıkları yer, hataların yaşayacağı modüller:
+71 test. Yoğunlaştıkları yer, hataların yaşayacağı modüller:
 
 - **Slot motoru** (31 test) — çalışma saatleri, izinler, dolu saatler, geçmiş saatler, rezervasyon penceresi, değişken süre
 - **Saat dilimi hesapları** (18 test) — UTC dönüşümü, gün sınırları, aralık çakışması
 - **Telefon normalleştirme** (9 test) — aynı numaranın 8 farklı yazımı tek forma iner
+- **Webhook imza doğrulaması** (13 test) — geçersiz/eksik imza, gövde değişikliği tespiti
 
 ### Entegrasyon testleri — gerçek veritabanına bağlanır
 
@@ -179,7 +224,7 @@ npm test
 npm run test:integration --workspace=@berber/api
 ```
 
-59 test:
+99 test:
 
 - **Çakışma kısıtı** (7) — birim testi olarak yazılamaz, çünkü kısıt PostgreSQL'in
   içinde yaşıyor. Sahte bir veritabanıyla test etmek tam da sınanmak istenen şeyi
@@ -189,6 +234,14 @@ npm run test:integration --workspace=@berber/api
   kilitleme, kullanıcı sayımına karşı tek tip hata mesajı
 - **Randevu API'si** (30) — yetki sınırları (staff başkasının verisine erişemiyor),
   walk-in, durum geçişleri, erteleme, sayfalama
+- **Chatbot** (27) — sahte WhatsApp istemcisiyle uçtan uca konuşma simülasyonu:
+  randevu alma, iptal, kara liste, opt-out, hatalı girdi yönetimi
+- **Cron işleri** (13) — kilit eşzamanlılığı, hatırlatma pencereleri, opt-out
+  müşteriye göndermeme
+
+Panel, tarayıcıda gerçek giriş bilgileriyle uçtan uca elle test edildi (giriş,
+oturum kalıcılığı, staff/admin yetki ayrımı, walk-in oluşturma, durum
+değişiklikleri, iptal akışı) — ayrı bir otomatik tarayıcı test takımı yok.
 
 ---
 

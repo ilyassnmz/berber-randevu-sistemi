@@ -466,6 +466,26 @@ model PushSubscription {
 }
 
 // ─────────────────────────────────────────────────────────
+// Zamanlanmış iş kilitleri
+// ─────────────────────────────────────────────────────────
+
+/// Cron işlerinin tek örnekte çalışmasını garanti eden satır tabanlı kilit.
+///
+/// Postgres'in oturum seviyesindeki advisory lock'ları (`pg_try_advisory_lock`)
+/// yerine bu tercih edildi: Neon'un havuzlanmış bağlantısı (PgBouncer,
+/// transaction modu) her sorguyu farklı bir fiziksel bağlantıya yönlendirebiliyor,
+/// bu da advisory lock'ların oturum sürekliliğine dayanan garantisini bozuyor
+/// (ölçüldüğünde iki eşzamanlı çağrının ikisi de kilidi alabildiği görüldü).
+/// Sıradan bir DML işlemi olan `INSERT ... ON CONFLICT` ise havuzlamadan
+/// etkilenmiyor.
+model JobLock {
+  name        String   @id
+  lockedUntil DateTime @map("locked_until") @db.Timestamptz(3)
+
+  @@map("job_locks")
+}
+
+// ─────────────────────────────────────────────────────────
 // Denetim kaydı
 // ─────────────────────────────────────────────────────────
 

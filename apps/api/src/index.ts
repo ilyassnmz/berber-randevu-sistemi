@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { env, isWhatsAppConfigured } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { disconnectDatabase } from './db/client.js';
+import { startScheduler, stopScheduler } from './jobs/scheduler.js';
 
 const app = createApp();
 
@@ -21,6 +22,8 @@ const server = app.listen(env.PORT, () => {
         'Ayarlar için .env.example dosyasına bakın.',
     );
   }
+
+  startScheduler();
 });
 
 /**
@@ -38,6 +41,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
 
   logger.info({ signal }, 'Kapanma başlatıldı, açık istekler bekleniyor');
+  stopScheduler();
 
   const forceExit = setTimeout(() => {
     logger.error('Açık istekler 15 saniyede bitmedi, zorla kapatılıyor');

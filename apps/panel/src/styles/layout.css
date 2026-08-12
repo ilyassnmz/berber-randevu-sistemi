@@ -1,0 +1,417 @@
+/* ── Giriş ekranı ────────────────────────────────────── */
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.login-logo {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.login-subtitle {
+  color: var(--text-dim);
+  margin: 4px 0 32px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+}
+
+/* ── Form elemanları ─────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field span {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.field input,
+.field select,
+.field textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  color: var(--text);
+  min-height: var(--tap-min);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.form-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+/* ── Butonlar ─────────────────────────────────────────── */
+
+.btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 12px 20px;
+  font-weight: 600;
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: opacity 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn:active:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.btn-secondary {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 18px;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.btn-icon:active {
+  background: var(--surface-raised);
+}
+
+/* ── Uygulama kabuğu ─────────────────────────────────── */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-header-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.app-header-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.app-content {
+  flex: 1;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Tarih navigasyonu ───────────────────────────────── */
+
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.date-nav-label {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.date-nav-today {
+  font-size: 13px;
+  padding: 8px 14px;
+}
+
+.barber-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.barber-tab {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.barber-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ── Banner ──────────────────────────────────────────── */
+
+.banner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.banner-closed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── Randevu listesi ─────────────────────────────────── */
+
+.appointment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.appointment-card,
+.slot-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: left;
+  width: 100%;
+}
+
+.appointment-card {
+  border-left: 4px solid var(--status-confirmed);
+}
+
+.appointment-card[data-status='pending_confirm'] { border-left-color: var(--status-pending); }
+.appointment-card[data-status='confirmed'] { border-left-color: var(--status-confirmed); }
+.appointment-card[data-status='cancelled'] { border-left-color: var(--status-cancelled); opacity: 0.6; }
+.appointment-card[data-status='completed'] { border-left-color: var(--status-completed); }
+.appointment-card[data-status='no_show'] { border-left-color: var(--status-noshow); opacity: 0.7; }
+
+.slot-card {
+  color: var(--text-faint);
+  border-style: dashed;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.appt-time {
+  font-weight: 700;
+  font-size: 15px;
+  min-width: 52px;
+}
+
+.appt-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.appt-name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appt-meta {
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Durum rozeti ────────────────────────────────────── */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.status-badge[data-status='pending_confirm'] { background: rgba(226,185,59,.15); color: var(--status-pending); }
+.status-badge[data-status='confirmed'] { background: rgba(76,139,245,.15); color: var(--status-confirmed); }
+.status-badge[data-status='cancelled'] { background: rgba(224,90,90,.15); color: var(--status-cancelled); }
+.status-badge[data-status='completed'] { background: rgba(76,175,125,.15); color: var(--status-completed); }
+.status-badge[data-status='no_show'] { background: rgba(122,122,140,.2); color: var(--status-noshow); }
+
+/* ── Boş / hata / yükleniyor ─────────────────────────── */
+
+.state-message {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px 16px;
+}
+
+.loading-center {
+  display: grid;
+  place-items: center;
+  padding: 60px 0;
+}
+
+/* ── Modal ───────────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-sheet {
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 20px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+  .modal-overlay {
+    align-items: center;
+  }
+  .modal-sheet {
+    border-radius: 20px;
+    max-height: 85vh;
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal-actions-row {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-actions-row .btn {
+  flex: 1;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.detail-row span:first-child {
+  color: var(--text-dim);
+}
+
+.detail-row a {
+  color: var(--accent);
+  text-decoration: none;
+}
