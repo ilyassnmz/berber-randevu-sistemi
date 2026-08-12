@@ -1,0 +1,54 @@
+# ══════════════════════════════════════════════════════════════════
+#  Üretim dağıtımı — Hetzner sunucusunda çalıştırılır
+# ══════════════════════════════════════════════════════════════════
+#
+# Kullanım (sunucuda, repo kökünde):
+#
+#     cp deploy/.env.example .env      # doldur
+#     docker compose up -d --build
+#
+# Veritabanı burada YOK — Neon (dış, yönetilen Postgres) kullanılıyor.
+# Bkz. deploy/DEPLOY.md için tam adımlar.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - '3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3000/healthz', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.caddy
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

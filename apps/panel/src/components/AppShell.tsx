@@ -23,7 +23,10 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-header-title">💈 Müslüm Berber</div>
+        <div className="app-header-title">
+          <img src="/icons/icon-192.png" alt="" width={28} height={28} />
+          Özdede Hair Studio
+        </div>
         <div className="app-header-user">
           <span>{barber?.name}</span>
           <button

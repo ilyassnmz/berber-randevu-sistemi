@@ -288,7 +288,7 @@ async function showMainMenu(customer: SessionCustomer, sessionId: string): Promi
 
   await replyToCustomer(
     customer,
-    `${greeting}\nMüslüm Berber'e hoş geldiniz 💈\n\nSize nasıl yardımcı olabiliriz?${consentLine}`,
+    `${greeting}\nÖzdede Hair Studio'ya hoş geldiniz 💈\n\nSize nasıl yardımcı olabiliriz?${consentLine}`,
     { buttons: mainMenuButtons() },
   );
 

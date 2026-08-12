@@ -10,10 +10,10 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icons/icon-192.svg', 'icons/icon-512.svg'],
+        includeAssets: ['favicon.png', 'icons/apple-touch-icon.png'],
         manifest: {
-          name: 'Müslüm Berber Panel',
-          short_name: 'Berber Panel',
+          name: 'Özdede Hair Studio Panel',
+          short_name: 'Özdede Panel',
           description: 'Randevu yönetim paneli',
           theme_color: '#151521',
           background_color: '#151521',
@@ -22,10 +22,10 @@ export default defineConfig(({ mode }) => {
           start_url: '/',
           lang: 'tr',
           icons: [
-            { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
-            { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'maskable' },
-            { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
-            { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
+            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
         },
         workbox: {

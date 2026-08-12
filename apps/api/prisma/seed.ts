@@ -15,7 +15,7 @@ import { randomBytes } from 'node:crypto';
 
 const prisma = new PrismaClient();
 
-const SHOP_SLUG = 'muslum-berber';
+const SHOP_SLUG = 'ozdede-hair-studio';
 
 /** Okunabilir ama tahmin edilemez şifre üretir. */
 function generatePassword(): string {
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     where: { slug: SHOP_SLUG },
     update: {},
     create: {
-      name: 'Müslüm Berber',
+      name: 'Özdede Hair Studio',
       slug: SHOP_SLUG,
       timezone: 'Europe/Istanbul',
       slotStepMin: 45,

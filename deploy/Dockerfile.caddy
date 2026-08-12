@@ -1,0 +1,34 @@
+# ══════════════════════════════════════════════════════════════════
+#  Panel + Caddy imajı
+# ══════════════════════════════════════════════════════════════════
+#
+# Panel burada Docker İÇİNDE derlenir (host'ta elle `npm run build`
+# çalıştırıp dosya kopyalamaya güvenmek yerine) — böylece deploy tek
+# komutla, insan hatasına yer bırakmadan tekrarlanabilir.
+#
+# Repo kökünden çalıştırılmalı:
+#
+#     docker build -f deploy/Dockerfile.caddy -t ozdede-caddy .
+
+FROM node:20-slim AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/panel/package.json apps/panel/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci
+
+COPY packages/shared packages/shared
+COPY apps/panel apps/panel
+
+RUN npm run build --workspace=@berber/shared \
+    && npm run build --workspace=@berber/panel
+
+# ─────────────────────────────────────────────────────────
+
+FROM caddy:2-alpine
+
+COPY --from=build /app/apps/panel/dist /srv/panel
+COPY deploy/Caddyfile /etc/caddy/Caddyfile

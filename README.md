@@ -1,4 +1,4 @@
-# 💈 Müslüm Berber — WhatsApp Randevu Sistemi
+# 💈 Özdede Hair Studio — WhatsApp Randevu Sistemi
 
 Müşteriler WhatsApp üzerinden randevu alır, berberler mobil web panelinden yönetir.
 
@@ -19,10 +19,20 @@ Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 | M6 — Chatbot | ✅ Tamamlandı |
 | M7 — Panel (PWA) | ✅ Tamamlandı |
 | M9 — Hatırlatma cron'ları | ✅ Tamamlandı |
+| M8 — Gizlilik/KVKK sayfası | ✅ Tamamlandı (`/gizlilik`) |
+| Dağıtım (Docker + Caddy) | ✅ Dosyalar hazır — sunucuda henüz test edilmedi |
+| Üretime alma (Hetzner + domain) | ⚪ Sunucu/domain bekleniyor |
+| WhatsApp gerçek numara bağlantısı | ⚪ **Bilinçli olarak en son** — önce yukarıdakiler doğrulanacak |
 
-**Hazır olanlar:** Veri modeli (14 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in dahil) · WhatsApp webhook (imza doğrulaması + idempotency) · chatbot (randevu alma, iptal, listeleme) · yönetim paneli (PWA — giriş, günlük takvim, walk-in, randevu detayı, kara liste) · hatırlatma cron'ları (1 gün / 1 saat önce) · denetim kaydı
+**Hazır olanlar:** Veri modeli (14 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in dahil) · WhatsApp webhook (imza doğrulaması + idempotency) · chatbot (randevu alma, iptal, listeleme) · yönetim paneli (PWA — giriş, günlük takvim, walk-in, randevu detayı, kara liste) · hatırlatma cron'ları · gizlilik politikası sayfası · dağıtım dosyaları (Dockerfile, docker-compose, Caddyfile)
 
-**Sıradaki:** WhatsApp Business hesabının Meta'da kurulması → üretime alma (Hetzner + domain)
+**Sıradaki:** Hetzner sunucusu + domain kurulup her şey WhatsApp'sız doğrulanacak, WhatsApp bağlantısı en son adım olacak. Ayrıntı: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
+
+> ⚠️ **Docker dosyaları yerel makinede test edilemedi** — bu makinede Docker kurulu değil.
+> Dosyalar dikkatle yazıldı ve mantığı elle doğrulandı, ama gerçek `docker build`
+> ilk kez sunucuda çalıştırılacak. Bu, dağıtım adımının kendisinin bir parçası —
+> sunucu kurulurken build loglarını birlikte izleyip çıkabilecek hataları
+> orada düzelteceğiz.
 
 **Kapsam dışı bırakılanlar (v1.1/v1.2'ye ertelendi):** push bildirim, ayarlar ekranı (çalışma saatleri/izin/hizmet yönetimi paneli — şu an yalnızca DB'den), müşteri geçmişi ekranı, istatistikler. Ayrıntı için [todo.md](todo.md).
 
@@ -266,6 +276,36 @@ Kodda hiçbir değişiklik gerekmiyor — istemci seçimi yapılandırmadan geli
 > ℹ️ Doğrulanmamış Meta hesabı 24 saatte 250 benzersiz müşteriye mesaj
 > gönderebilir. Bir berber için fazlasıyla yeterli; lansman Business
 > Verification'ı beklemek zorunda değil.
+
+> ⚠️ **Bu alanlar `NODE_ENV=production`'da da opsiyoneldir** — bilinçli bir
+> tasarım kararı. Zorunlu tutulsaydı, Meta hesabı hazır olmadan üretim
+> sunucusu hiç açılamazdı. Yol haritası önce sunucunun WhatsApp'sız
+> doğrulanmasını, sonra WhatsApp'ın bağlanmasını öngörüyor.
+
+---
+
+## Dağıtım (Hetzner)
+
+Docker Compose ile tek komutla ayağa kalkacak şekilde hazırlandı:
+`api` konteyneri (Node.js) + `caddy` konteyneri (panel'in statik dosyalarını
+servis eder, API'yi ters proxy'ler, HTTPS sertifikasını otomatik alır).
+Veritabanı ayrı bir konteyner değil — geliştirmede kullanılan Neon.
+
+Adım adım kurulum: **[`deploy/DEPLOY.md`](deploy/DEPLOY.md)**
+
+```
+deploy/
+  Dockerfile.api      → API imajı
+  Dockerfile.caddy     → Panel derlemesi + Caddy
+  Caddyfile             → Ters proxy + statik dosya kuralları
+  .env.example          → Üretim ortam değişkeni şablonu
+  DEPLOY.md              → Adım adım kurulum
+docker-compose.yml      → İkisini birlikte ayağa kaldırır
+```
+
+> ⚠️ Bu makinede Docker kurulu olmadığı için `docker build` yerel olarak
+> denenemedi. Dosyalar dikkatle yazıldı, ama ilk gerçek testleri sunucu
+> kurulumu sırasında yapılacak.
 
 ---
 

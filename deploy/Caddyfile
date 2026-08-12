@@ -1,0 +1,45 @@
+# ══════════════════════════════════════════════════════════════════
+#  Caddy yapılandırması
+# ══════════════════════════════════════════════════════════════════
+#
+# Panel ve API AYNI domain üzerinden servis ediliyor — bu sayede
+# tarayıcıda CORS/çerez sorunu hiç yaşanmıyor (aynı origin).
+#
+# {$DOMAIN} ortam değişkeninden okunur (docker-compose.yml → .env).
+# Caddy bu domain için Let's Encrypt sertifikasını OTOMATİK alır;
+# elle sertifika kurmaya gerek yok.
+
+{$DOMAIN} {
+	# API ve webhook istekleri arka uçtaki Node sürecine gider.
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+	handle /webhook/* {
+		reverse_proxy api:3000
+	}
+	handle /healthz {
+		reverse_proxy api:3000
+	}
+	handle /readyz {
+		reverse_proxy api:3000
+	}
+	handle /gizlilik {
+		reverse_proxy api:3000
+	}
+
+	# Geri kalan her şey panelin statik dosyaları.
+	# try_files ile SPA yönlendirmesi: /takvim gibi bir path'e doğrudan
+	# girilirse (sayfa yenileme, favorilerden açma) 404 yerine index.html
+	# dönülür — React Router isteği oradan devralır.
+	handle {
+		root * /srv/panel
+		try_files {path} /index.html
+		file_server
+		encode gzip
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

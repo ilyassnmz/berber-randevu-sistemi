@@ -15,6 +15,7 @@ import { barbersRouter } from './routes/barbers.js';
 import { servicesRouter } from './routes/services.js';
 import { customersRouter } from './routes/customers.js';
 import { webhookRouter } from './routes/webhook.js';
+import { legalRouter } from './routes/legal.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp(): Express {
@@ -81,6 +82,9 @@ export function createApp(): Express {
   // /api altında DEĞİL: genel IP bazlı hız sınırı buraya uygulanamaz, çünkü
   // tüm webhook trafiği Meta'nın IP'lerinden gelir ve tek istemci gibi görünür.
   app.use('/webhook', webhookRouter);
+
+  // Gizlilik politikası — herkese açık, Meta onayı ve KVKK için gerekli.
+  app.use(legalRouter);
 
   // ── Genel hız sınırı ───────────────────────────────────
   // Webhook'un kendi sınırı var (telefon numarasına göre); IP bazlı sınır

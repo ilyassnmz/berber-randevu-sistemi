@@ -46,29 +46,16 @@ const baseSchema = z.object({
 });
 
 /**
- * Üretimde WhatsApp ve Sentry ayarları zorunlu hale gelir.
- * Geliştirme sırasında bot olmadan da çalışabilmek gerekiyor.
+ * ⚠️ WhatsApp ayarları ÜRETİMDE DE opsiyonel bırakıldı — bilinçli bir tercih.
+ *
+ * Yol haritası, sunucunun ve panelin WhatsApp'tan önce, WhatsApp'sız olarak
+ * yayına alınıp doğrulanmasını öngörüyor (bkz. todo.md). Bu ayarlar production'da
+ * zorunlu tutulsaydı, Meta hesabı hazır olmadan sunucu HİÇ AÇILAMAZDI — tam da
+ * "önce her şeyin sorunsuz çalıştığını doğrula, WhatsApp'ı en son bağla" isteğinin
+ * önüne geçerdi. Eksik olduğunda `index.ts` bir uyarı loglar ve bot sahte
+ * istemciyle çalışır; hiçbir şey sessizce yanlış davranmaz.
  */
-const envSchema = baseSchema.superRefine((env, ctx) => {
-  if (env.NODE_ENV !== 'production') return;
-
-  const requiredInProd = [
-    'WHATSAPP_PHONE_NUMBER_ID',
-    'WHATSAPP_ACCESS_TOKEN',
-    'WHATSAPP_APP_SECRET',
-    'WHATSAPP_VERIFY_TOKEN',
-  ] as const;
-
-  for (const key of requiredInProd) {
-    if (!env[key]) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [key],
-        message: `${key} üretim ortamında zorunlu`,
-      });
-    }
-  }
-});
+const envSchema = baseSchema;
 
 export type Env = z.infer<typeof envSchema>;
 

@@ -42,10 +42,8 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo" aria-hidden>
-          💈
-        </div>
-        <h1>Müslüm Berber</h1>
+        <img className="login-logo" src="/icons/icon-192.png" alt="" aria-hidden width={96} height={96} />
+        <h1>Özdede Hair Studio</h1>
         <p className="login-subtitle">Randevu Paneli</p>
 
         <form onSubmit={handleSubmit} className="login-form">

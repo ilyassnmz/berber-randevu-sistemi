@@ -1,0 +1,45 @@
+# ══════════════════════════════════════════════════════════════════
+#  API imajı — tek aşamalı, bilinçli olarak.
+# ══════════════════════════════════════════════════════════════════
+#
+# Çok aşamalı (multi-stage) bir Dockerfile ile imaj küçültülebilirdi, ama
+# hangi dosyanın hangi aşamaya kopyalanacağını elle seçmek "eksik dosya"
+# sınıfı hatalara açık kapı bırakır. Tek dükkanlı, düşük trafikli bu sistem
+# için ekstra ~300MB imaj boyutu önemsiz; "hiç hata çıkmasın" önceliği
+# basitliği haklı çıkarıyor.
+#
+# Bu Dockerfile REPO KÖKÜNDEN çalıştırılmalı (npm workspaces, kök
+# package-lock.json'a ihtiyaç duyuyor):
+#
+#     docker build -f deploy/Dockerfile.api -t ozdede-api .
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Prisma'nın Linux sorgu motoru OpenSSL'e ihtiyaç duyuyor.
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Önce yalnızca package.json'lar — bağımlılık katmanı, kaynak kod
+# değişince yeniden kurulmasın diye ayrı tutuluyor.
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/panel/package.json apps/panel/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci
+
+# Kaynak kod. apps/panel kasıtlı olarak KOPYALANMIYOR — bu imajın işi
+# değil, panel ayrı bir imajda (Dockerfile.caddy) derleniyor.
+COPY packages/shared packages/shared
+COPY apps/api apps/api
+
+RUN npm run build --workspace=@berber/shared \
+    && npm run db:generate --workspace=@berber/api \
+    && npm run build --workspace=@berber/api
+
+ENV NODE_ENV=production
+EXPOSE 3000
+
+CMD ["node", "apps/api/dist/index.js"]

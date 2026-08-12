@@ -14,8 +14,12 @@
 }
 
 .login-logo {
-  font-size: 48px;
-  margin-bottom: 8px;
+  display: block;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  /* Logo kendi dairesel rozetini taşıyor; köşelerdeki beyaz zemini
+     kırpıp koyu temada temiz görünmesi için daireye kesiliyor. */
+  box-shadow: 0 0 0 1px var(--border);
 }
 
 .login-card h1 {
@@ -156,8 +160,15 @@
 }
 
 .app-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   font-size: 16px;
+}
+
+.app-header-title img {
+  border-radius: 50%;
 }
 
 .app-header-user {
