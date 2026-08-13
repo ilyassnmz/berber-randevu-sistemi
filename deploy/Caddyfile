@@ -8,6 +8,15 @@
 # {$DOMAIN} ortam değişkeninden okunur (docker-compose.yml → .env).
 # Caddy bu domain için Let's Encrypt sertifikasını OTOMATİK alır;
 # elle sertifika kurmaya gerek yok.
+#
+# ⚠️ acme_ca elle production'a sabitlendi: DNS yanlış hedefi gösterdiği
+# dönemde production'a yapılan denemeler başarısız olunca Caddy kendiliğinden
+# staging (test) ortamına düşmüştü — staging sertifikaları tarayıcılar
+# tarafından güvenilmez. Bu satır olmadan Caddy bir daha aynı duruma düşerse
+# fark edilmeden staging'de takılı kalabilir.
+{
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+}
 
 {$DOMAIN} {
 	# API ve webhook istekleri arka uçtaki Node sürecine gider.

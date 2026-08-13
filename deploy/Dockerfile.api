@@ -24,7 +24,11 @@ RUN apt-get update -y \
 
 # Önce yalnızca package.json'lar — bağımlılık katmanı, kaynak kod
 # değişince yeniden kurulmasın diye ayrı tutuluyor.
-COPY package.json package-lock.json ./
+# ⚠️ tsconfig.base.json da buraya dahil: apps/api ve packages/shared'ın
+# kendi tsconfig'leri bunu "../../tsconfig.base.json" olarak extend ediyor,
+# kopyalanmazsa tsc sessizce varsayılan (çok eski) hedefe düşüyor ve
+# ilgisiz görünen ikinci bir hata daha üretiyor.
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/panel/package.json apps/panel/package.json
 COPY packages/shared/package.json packages/shared/package.json
