@@ -12,6 +12,7 @@ import { logger } from '../lib/logger.js';
 
 export const AUDIT_ACTIONS = {
   APPOINTMENT_CREATE: 'appointment.create',
+  APPOINTMENT_CONFIRM: 'appointment.confirm',
   APPOINTMENT_CANCEL: 'appointment.cancel',
   APPOINTMENT_COMPLETE: 'appointment.complete',
   APPOINTMENT_NO_SHOW: 'appointment.no_show',

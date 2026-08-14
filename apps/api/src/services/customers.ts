@@ -28,6 +28,64 @@ export async function blacklistCustomer(
   return updated;
 }
 
+export interface ListCustomersParams {
+  shopId: string;
+  search?: string | undefined;
+  blacklistedOnly?: boolean | undefined;
+  cursor?: string | undefined;
+  limit: number;
+}
+
+/** todo.md M3: sayfalamalı, aranabilir müşteri listesi. */
+export async function listCustomers(params: ListCustomersParams) {
+  const where: Record<string, unknown> = { shopId: params.shopId };
+
+  if (params.blacklistedOnly) where.isBlacklisted = true;
+
+  if (params.search) {
+    where.OR = [
+      { name: { contains: params.search, mode: 'insensitive' } },
+      { phone: { contains: params.search, mode: 'insensitive' } },
+    ];
+  }
+
+  // Bir fazla çekip "devamı var mı" sorusunu cevaplıyoruz — listAppointments'la aynı desen.
+  const rows = await prisma.customer.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    take: params.limit + 1,
+    ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
+  });
+
+  const hasMore = rows.length > params.limit;
+  const items = hasMore ? rows.slice(0, params.limit) : rows;
+
+  return {
+    items,
+    nextCursor: hasMore ? (items.at(-1)?.id ?? null) : null,
+  };
+}
+
+/** todo.md M3: müşteri detayı, randevu geçmişiyle. */
+export async function getCustomer(shopId: string, customerId: string) {
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, shopId },
+    include: {
+      appointments: {
+        orderBy: { startsAt: 'desc' },
+        take: 50,
+        include: {
+          service: { select: { id: true, name: true } },
+          barber: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  if (!customer) throw new NotFoundError('Müşteri bulunamadı');
+  return customer;
+}
+
 export async function unblacklistCustomer(shopId: string, customerId: string, actorId: string) {
   const customer = await prisma.customer.findFirst({ where: { id: customerId, shopId } });
   if (!customer) throw new NotFoundError('Müşteri bulunamadı');

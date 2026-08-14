@@ -3,6 +3,7 @@ import { env, isWhatsAppConfigured } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { disconnectDatabase } from './db/client.js';
 import { startScheduler, stopScheduler } from './jobs/scheduler.js';
+import { waitForPendingWebhookWork } from './routes/webhook.js';
 
 const app = createApp();
 
@@ -56,6 +57,10 @@ async function shutdown(signal: string): Promise<void> {
     }
 
     try {
+      // Yanıtı çoktan gönderilmiş ama arka planda süren webhook işleme
+      // (bkz. routes/webhook.ts) bitmeden veritabanı bağlantısını kapatma —
+      // aksi halde bir WhatsApp mesajı işlenirken yarıda kesilir.
+      await waitForPendingWebhookWork();
       await disconnectDatabase();
       logger.info('Kapanma tamamlandı');
       process.exit(0);

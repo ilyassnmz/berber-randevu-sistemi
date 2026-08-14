@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.env
+**/.env
+.github
+*.md
+.vscode
+.idea
+apps/api/tests
+apps/api/coverage

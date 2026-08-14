@@ -32,5 +32,10 @@ RUN npm run build --workspace=@berber/shared \
 
 FROM caddy:2-alpine
 
+# ⚠️ Bu imaj (API imajının aksine) BİLEREK root ile çalışıyor: 80 ve 443
+# ayrıcalıklı portlar, root olmadan bind edilemez. Bunu kaldırmanın yolu
+# (setcap ya da host'ta 8080/8443'e yönlendirip Docker'a taşıtmak) docker-
+# compose.yml'e de dokunmayı gerektirir — tek dükkanlı, güvenilir bir imajdan
+# (resmi Caddy) gelen bu risk, ekstra karmaşıklığa değmiyor.
 COPY --from=build /app/apps/panel/dist /srv/panel
 COPY deploy/Caddyfile /etc/caddy/Caddyfile

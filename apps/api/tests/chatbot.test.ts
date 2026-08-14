@@ -21,7 +21,13 @@ import { ACTION, PREFIX, CHAT_STATE } from '../src/services/chatbot/states.js';
 
 const fake = new FakeWhatsAppClient();
 let fx: TestFixture;
-let shop: { id: string; timezone: string; contactPhone: string | null; cancelCutoffMin: number };
+let shop: {
+  id: string;
+  timezone: string;
+  contactPhone: string | null;
+  cancelCutoffMin: number;
+  confirmTimeoutMin: number;
+};
 
 const CUSTOMER_PHONE = '+905551112233';
 let messageCounter = 0;
@@ -74,6 +80,7 @@ beforeAll(async () => {
     timezone: created.timezone,
     contactPhone: created.contactPhone,
     cancelCutoffMin: created.cancelCutoffMin,
+    confirmTimeoutMin: created.confirmTimeoutMin,
   };
 
   // Tek berber bırakıyoruz: bot tek berber varsa seçim sormuyor,
@@ -200,7 +207,24 @@ describe('Randevu alma akışı', () => {
 
     expect(lastBody()).toContain('Randevu Özeti');
     expect(lastBody()).toContain('Test Hizmet');
+    expect(lastBody()).toContain('dakika içinde onaylamazsanız');
     expect(optionIds()).toEqual([ACTION.CONFIRM_YES, ACTION.CONFIRM_NO]);
+  });
+
+  it('özet ekranı gösterilirken slot pending_confirm olarak rezerve edilir', async () => {
+    // Onaylanmadan önce bile slot DB'de tutulmalı — aksi halde 5 dakikalık
+    // onay süresi hiçbir şeyi korumaz (todo.md'nin vaat ettiği davranış).
+    await send('merhaba');
+    await send(ACTION.BOOK);
+    await send('Ahmet Yılmaz');
+    await send(ACTION.DATE_TOMORROW);
+    const slotId = optionIds().find((id) => id.startsWith(PREFIX.SLOT))!;
+    await send(slotId);
+    await send(`${PREFIX.SERVICE}${fx.serviceId}`);
+
+    const pending = await testPrisma.appointment.findFirst({ where: { shopId: fx.shopId } });
+    expect(pending?.status).toBe('pending_confirm');
+    expect(pending?.confirmDeadline).not.toBeNull();
   });
 
   it('onaylayınca randevu OLUŞTURUR', async () => {
@@ -236,8 +260,17 @@ describe('Randevu alma akışı', () => {
     await send(`${PREFIX.SERVICE}${fx.serviceId}`);
     await send(ACTION.CONFIRM_NO);
 
-    const count = await testPrisma.appointment.count({ where: { shopId: fx.shopId } });
-    expect(count).toBe(0);
+    // Özet ekranı gösterilirken slot pending_confirm olarak rezerve edilmişti
+    // (5 dk içinde onaylanmazsa serbest kalsın diye) — Vazgeç bu rezervasyonu
+    // iptal eder, kayıt SİLİNMEZ (geçmiş için) ama artık AKTİF değildir.
+    const active = await testPrisma.appointment.count({
+      where: { shopId: fx.shopId, status: { notIn: ['cancelled'] } },
+    });
+    expect(active).toBe(0);
+
+    const cancelled = await testPrisma.appointment.findFirst({ where: { shopId: fx.shopId } });
+    expect(cancelled?.status).toBe('cancelled');
+    expect(cancelled?.cancelledBy).toBe('customer');
   });
 
   it('adı bilinen müşteriye tekrar ad sormaz', async () => {
@@ -271,13 +304,14 @@ describe('Aynı güne ikinci randevu engeli', () => {
     await send(`${PREFIX.SERVICE}${fx.serviceId}`);
     await send(ACTION.CONFIRM_YES);
 
-    // Aynı gün için ikinci deneme
+    // Aynı gün için ikinci deneme — engel artık özet ekranından ÖNCE, slot
+    // rezerve edilmeden devreye giriyor (showConfirmation), bu yüzden
+    // reddetme mesajı hizmet seçildiği anda geliyor, CONFIRM_YES'e gerek yok.
     await send(ACTION.BOOK);
     await send(ACTION.DATE_TOMORROW);
     const secondSlot = optionIds().find((id) => id.startsWith(PREFIX.SLOT))!;
     await send(secondSlot);
     await send(`${PREFIX.SERVICE}${fx.serviceId}`);
-    await send(ACTION.CONFIRM_YES);
 
     expect(lastBody()).toContain('zaten bir randevunuz var');
 

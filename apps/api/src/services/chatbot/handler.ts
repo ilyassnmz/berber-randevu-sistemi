@@ -4,9 +4,16 @@ import { logger } from '../../lib/logger.js';
 import type { InboundMessage } from '../whatsapp/payload.js';
 import { replyToCustomer, touchInbound } from '../whatsapp/messaging.js';
 import type { ReplyButton, ListRow } from '../whatsapp/client.js';
-import { getAvailableSlots, createAppointment, cancelAppointment } from '../appointments.js';
+import {
+  getAvailableSlots,
+  createAppointment,
+  cancelAppointment,
+  confirmPendingAppointment,
+  assertCustomerCanCancel,
+} from '../appointments.js';
 import { getZonedParts, formatLocalTime, parseDateString, formatDateTr } from '../../lib/time.js';
 import { shouldSilence } from './spam-guard.js';
+import { SlotTakenError, ConflictError } from '../../lib/errors.js';
 import {
   CHAT_STATE,
   ACTION,
@@ -76,7 +83,13 @@ export async function resolveShop(phoneNumberId: string | null) {
 
 export async function handleInboundMessage(
   message: InboundMessage,
-  shopOverride?: { id: string; timezone: string; contactPhone: string | null; cancelCutoffMin: number },
+  shopOverride?: {
+    id: string;
+    timezone: string;
+    contactPhone: string | null;
+    cancelCutoffMin: number;
+    confirmTimeoutMin: number;
+  },
 ): Promise<void> {
   const shop = shopOverride ?? (await resolveShop(message.phoneNumberId));
 
@@ -236,7 +249,13 @@ async function setSession(
 // ─────────────────────────────────────────────────────────
 
 interface DispatchArgs {
-  shop: { id: string; timezone: string; contactPhone: string | null; cancelCutoffMin: number };
+  shop: {
+    id: string;
+    timezone: string;
+    contactPhone: string | null;
+    cancelCutoffMin: number;
+    confirmTimeoutMin: number;
+  };
   customer: SessionCustomer;
   sessionId: string;
   state: ChatState;
@@ -529,9 +548,24 @@ async function askTime(args: DispatchArgs): Promise<void> {
   const slots = await getAvailableSlots(shop.id, context.barberId, service.id, context.date);
 
   if (slots.length === 0) {
+    // Kapalı gün mü, yoksa gün dolu mu? todo.md iki ayrı mesaj istiyor —
+    // aynı jenerik "saat kalmadı" ikisini de gizler, müşteri kapalı bir güne
+    // ısrar edip edemeyeceğini anlayamaz.
+    const { year, month, day } = parseDateString(context.date);
+    const dayOfWeek = getZonedParts(
+      new Date(Date.UTC(year, month - 1, day, 12)),
+      shop.timezone,
+    ).dayOfWeek;
+    const workingHours = await prisma.workingHours.findUnique({
+      where: { barberId_dayOfWeek: { barberId: context.barberId, dayOfWeek } },
+    });
+    const isClosedDay = !workingHours || !workingHours.isWorking;
+
     await replyToCustomer(
       customer,
-      `${formatDateTr(context.date, shop.timezone)} günü için uygun saat kalmamış 😔\nBaşka bir gün deneyelim mi?`,
+      isClosedDay
+        ? `Seçtiğiniz tarihte kapalıyız 😔\nBaşka bir gün deneyelim mi?`
+        : `${formatDateTr(context.date, shop.timezone)} günü için uygun saat kalmamış 😔\nBaşka bir gün deneyelim mi?`,
       {
         buttons: [
           { id: ACTION.DATE_TODAY, title: 'Bugün' },
@@ -658,51 +692,19 @@ async function handleSelectService(args: DispatchArgs): Promise<void> {
   });
 }
 
+/**
+ * Özet ekranını gösterir VE randevuyu `pending_confirm` olarak DB'de rezerve
+ * eder — todo.md'nin "5 dakika içinde onaylanmazsa randevu oluşturulmadı"
+ * akışı ancak böyle gerçek olabilir. Rezervasyon burada yapılmazsa (eskiden
+ * olduğu gibi yalnızca "Onayla"ya basılınca oluşturulursa) 5 dakikalık
+ * `confirmDeadline`'ın koruyacağı hiçbir kayıt yoktur; `expirePendingAppointments`
+ * cron'u (jobs/cleanup.ts) zaten süresi geçmiş pending_confirm kayıtlarını
+ * otomatik iptal ediyor — eksik olan tek şey bu kaydın hiç açılmamasıydı.
+ */
 async function showConfirmation(args: DispatchArgs): Promise<void> {
   const { shop, customer, sessionId, context } = args;
 
-  if (!context.date || !context.startsAt || !context.serviceId) {
-    return showMainMenu(customer, sessionId);
-  }
-
-  await replyToCustomer(
-    customer,
-    '📋 *Randevu Özeti*\n\n' +
-      `👤 ${context.barberName}\n` +
-      `📅 ${formatDateTr(context.date, shop.timezone)}\n` +
-      `🕘 ${context.timeLabel}\n` +
-      `✂️ ${context.serviceName}`,
-    {
-      buttons: [
-        { id: ACTION.CONFIRM_YES, title: '✅ Onayla' },
-        { id: ACTION.CONFIRM_NO, title: '❌ Vazgeç' },
-      ],
-    },
-  );
-
-  await setSession(sessionId, CHAT_STATE.CONFIRM, context);
-}
-
-async function handleConfirm(args: DispatchArgs): Promise<void> {
-  const { text, shop, customer, sessionId, context } = args;
-  const normalized = normalizeTurkish(text);
-
-  const confirmed =
-    text === ACTION.CONFIRM_YES || normalized === 'onayla' || normalized === 'evet';
-  const declined =
-    text === ACTION.CONFIRM_NO || normalized === 'vazgeç' || normalized === 'vazgec';
-
-  if (declined) {
-    await replyToCustomer(customer, 'Randevu oluşturulmadı. Başka bir konuda yardımcı olabilir miyiz?', {
-      buttons: mainMenuButtons(),
-    });
-    await setSession(sessionId, CHAT_STATE.MAIN_MENU, {});
-    return;
-  }
-
-  if (!confirmed) return handleUnknown(args, () => showConfirmation(args));
-
-  if (!context.barberId || !context.serviceId || !context.startsAt || !customer.name) {
+  if (!context.date || !context.startsAt || !context.barberId || !context.serviceId || !customer.name) {
     return showMainMenu(customer, sessionId);
   }
 
@@ -728,6 +730,7 @@ async function handleConfirm(args: DispatchArgs): Promise<void> {
     return;
   }
 
+  let appointmentId: string;
   try {
     const appointment = await createAppointment({
       shopId: shop.id,
@@ -737,8 +740,88 @@ async function handleConfirm(args: DispatchArgs): Promise<void> {
       customerName: customer.name,
       customerPhone: customer.phone ?? undefined,
       source: 'whatsapp',
-      status: APPOINTMENT_STATUS.CONFIRMED,
+      status: APPOINTMENT_STATUS.PENDING_CONFIRM,
     });
+    appointmentId = appointment.id;
+  } catch (error) {
+    if (error instanceof SlotTakenError || error instanceof ConflictError) {
+      // Slot gerçekten dolu (çakışma kısıtı ya da ön kontrol) — beklenen bir
+      // durum, kullanıcıya güncel saatler yeniden sunuluyor.
+      logger.info({ err: error }, 'Chatbot rezervasyonu slot doluluğuna takıldı');
+      await replyToCustomer(customer, 'Bu saat az önce doldu 😔 Başka bir saat seçelim mi?');
+      return askTime({ ...args, context: { ...context, timeOffset: 0 } });
+    }
+
+    // Beklenmeyen bir hata (ör. berber/hizmet o an devre dışı bırakılmış,
+    // veritabanı sorunu). "Saat doldu" demek yanıltıcı olur — gerçek sorunu
+    // gizler. Hatayı gerçek bir hata olarak logla, müşteriye genel mesaj ver.
+    logger.error({ err: error }, 'Chatbot randevu rezervasyonu beklenmeyen hatayla başarısız oldu');
+    await replyToCustomer(
+      customer,
+      'Üzgünüz, şu anda randevunuzu oluşturamadık 😔 Lütfen birazdan tekrar deneyin ya da bizi arayın.' +
+        (shop.contactPhone ? `\n📞 ${shop.contactPhone}` : ''),
+      { buttons: mainMenuButtons() },
+    );
+    await setSession(sessionId, CHAT_STATE.MAIN_MENU, {});
+    return;
+  }
+
+  await replyToCustomer(
+    customer,
+    '📋 *Randevu Özeti*\n\n' +
+      `👤 ${context.barberName}\n` +
+      `📅 ${formatDateTr(context.date, shop.timezone)}\n` +
+      `🕘 ${context.timeLabel}\n` +
+      `✂️ ${context.serviceName}\n\n` +
+      `_${shop.confirmTimeoutMin} dakika içinde onaylamazsanız bu saat serbest kalır._`,
+    {
+      buttons: [
+        { id: ACTION.CONFIRM_YES, title: '✅ Onayla' },
+        { id: ACTION.CONFIRM_NO, title: '❌ Vazgeç' },
+      ],
+    },
+  );
+
+  await setSession(sessionId, CHAT_STATE.CONFIRM, { ...context, pendingAppointmentId: appointmentId });
+}
+
+async function handleConfirm(args: DispatchArgs): Promise<void> {
+  const { text, shop, customer, sessionId, context } = args;
+  const normalized = normalizeTurkish(text);
+
+  const confirmed =
+    text === ACTION.CONFIRM_YES || normalized === 'onayla' || normalized === 'evet';
+  const declined =
+    text === ACTION.CONFIRM_NO || normalized === 'vazgeç' || normalized === 'vazgec';
+
+  if (!context.pendingAppointmentId) {
+    // Oturum başka bir yoldan (ör. süresi dolup sıfırlanmış) buraya düşmüş —
+    // rezerve edilmiş bir randevu yok, baştan başlanmalı.
+    return showMainMenu(customer, sessionId);
+  }
+
+  if (declined) {
+    await cancelAppointment(
+      customer.shopId,
+      context.pendingAppointmentId,
+      'customer',
+      'Müşteri onaylamadı (Vazgeç)',
+    ).catch((error: unknown) => {
+      // Zaten süresi dolup cron tarafından iptal edilmiş olabilir — sorun değil.
+      logger.debug({ err: error }, 'Vazgeçilen pending randevu iptal edilirken hata (muhtemelen zaten iptal)');
+    });
+
+    await replyToCustomer(customer, 'Randevu oluşturulmadı. Başka bir konuda yardımcı olabilir miyiz?', {
+      buttons: mainMenuButtons(),
+    });
+    await setSession(sessionId, CHAT_STATE.MAIN_MENU, {});
+    return;
+  }
+
+  if (!confirmed) return handleUnknown(args, () => showConfirmation(args));
+
+  try {
+    const appointment = await confirmPendingAppointment(shop.id, context.pendingAppointmentId);
 
     await replyToCustomer(
       customer,
@@ -748,21 +831,22 @@ async function handleConfirm(args: DispatchArgs): Promise<void> {
         '_Randevudan 1 gün ve 1 saat önce hatırlatma göndereceğiz._',
     );
 
-    logger.info({ appointmentId: appointment.id }, 'Chatbot üzerinden randevu oluşturuldu');
-
+    logger.info({ appointmentId: appointment.id }, 'Chatbot üzerinden randevu onaylandı');
     // IDLE değil MAIN_MENU: WhatsApp'ta önceki mesajların butonları hâlâ
     // tıklanabilir durumda. IDLE'da kalırsak müşteri "Randevularım" butonuna
     // bastığında bot butonu işlemek yerine menüyü baştan gösterir.
     await setSession(sessionId, CHAT_STATE.MAIN_MENU, {});
   } catch (error) {
-    // Araya başka bir müşteri girdi — veritabanı kısıtı engelledi.
-    logger.info({ err: error }, 'Chatbot randevusu çakışmaya takıldı');
-
+    // confirmPendingAppointment yalnızca NOT_PENDING (ConflictError) fırlatır:
+    // 5 dakikalık süre dolup expirePendingAppointments cron'u kaydı zaten
+    // iptal etmiş demektir — Onayla'ya basmak artık işe yaramaz.
+    logger.info({ err: error }, 'Onaylanmak istenen randevunun süresi dolmuş');
     await replyToCustomer(
       customer,
-      'Bu saat az önce doldu 😔 Başka bir saat seçelim mi?',
+      '⏰ Onay süresi doldu, bu saat serbest kaldı. Yeniden randevu almak ister misiniz?',
+      { buttons: mainMenuButtons() },
     );
-    return askTime({ ...args, context: { ...context, timeOffset: 0 } });
+    await setSession(sessionId, CHAT_STATE.MAIN_MENU, {});
   }
 }
 
@@ -856,8 +940,14 @@ async function handleSelectCancelTarget(args: DispatchArgs): Promise<void> {
   if (!appointment) return handleUnknown(args, () => startCancelFlow(args));
 
   // ── İptal kesim saati ────────────────────────────────
-  const minutesUntil = (appointment.startsAt.getTime() - Date.now()) / 60_000;
-  if (minutesUntil < shop.cancelCutoffMin) {
+  // Kural (kaç dakika kala iptal edilemez) tek yerde: services/appointments.ts.
+  // Burada elle tekrarlanmıyor — biri değişip diğeri unutulursa iki ayrı
+  // yerde tutarsız bir kesim saati ortaya çıkardı.
+  try {
+    await assertCustomerCanCancel(shop.id, appointmentId);
+  } catch (error) {
+    if (!(error instanceof ConflictError)) throw error;
+
     await replyToCustomer(
       customer,
       `Randevunuza ${shop.cancelCutoffMin} dakikadan az kaldığı için buradan iptal edemiyorum 😔\n` +

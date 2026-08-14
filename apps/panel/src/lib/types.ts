@@ -1,6 +1,14 @@
-/** Backend yanıtlarıyla birebir eşleşen tipler. */
-
-export type BarberRole = 'admin' | 'staff';
+/**
+ * Backend yanıtlarıyla birebir eşleşen tipler.
+ *
+ * Rol ve durum ENUM'ları `@berber/shared`'dan geliyor — burada tekrar
+ * tanımlanmıyor. Backend yeni bir durum eklerse (ör. yeni bir
+ * `AppointmentStatus` değeri) panel derlemesi kırılır ve unutulan yer
+ * (StatusBadge'in ICONS sözlüğü gibi) derleme zamanında yakalanır; iki ayrı
+ * tip tanımıyla bu sessizce `undefined` render edilirdi.
+ */
+export type { BarberRole, AppointmentStatus, CancelledBy, AppointmentSource } from '@berber/shared';
+import type { BarberRole, AppointmentStatus, CancelledBy, AppointmentSource } from '@berber/shared';
 
 export interface Barber {
   id: string;
@@ -14,7 +22,6 @@ export interface AuthBarber {
   name: string;
   email: string;
   role: BarberRole;
-  isActive?: boolean;
 }
 
 export interface Service {
@@ -23,13 +30,6 @@ export interface Service {
   durationMin: number;
   price: string | null;
 }
-
-export type AppointmentStatus =
-  | 'pending_confirm'
-  | 'confirmed'
-  | 'cancelled'
-  | 'completed'
-  | 'no_show';
 
 export interface Customer {
   id: string;
@@ -48,9 +48,9 @@ export interface Appointment {
   startsAt: string;
   endsAt: string;
   status: AppointmentStatus;
-  cancelledBy: 'customer' | 'barber' | 'system' | null;
+  cancelledBy: CancelledBy | null;
   cancelReason: string | null;
-  source: 'whatsapp' | 'panel';
+  source: AppointmentSource;
   createdAt: string;
   customer: Customer;
   service: { id: string; name: string; durationMin: number };

@@ -6,13 +6,11 @@ import { AUDIT_ACTIONS, recordAudit } from '../services/audit.js';
 /**
  * Süresi dolmuş `pending_confirm` randevuları iptal eder.
  *
- * Şu anki chatbot akışında randevu, müşteri "Onayla"ya bastıktan SONRA
- * doğrudan `confirmed` olarak oluşturuluyor — onay adımı kayıttan önce
- * gerçekleşiyor. Yani bu iş bugün pratikte pek kayıt bulmuyor. Yine de
- * şema `pending_confirm` durumunu ve `confirmDeadline`'ı destekliyor
- * (ileride şablon tabanlı/onaysız bir rezervasyon akışı eklenirse), bu
- * yüzden temizlik işi hazır tutuluyor — aksi halde o akış sessizce
- * randevuları sonsuza dek "onay bekliyor" bırakırdı.
+ * Chatbot, özet ekranını gösterirken randevuyu `pending_confirm` olarak
+ * rezerve ediyor (chatbot/handler.ts → showConfirmation); "Onayla" ile
+ * `confirmed`'e geçiyor. Müşteri `confirmTimeoutMin` (varsayılan 5 dk)
+ * içinde yanıt vermezse rezervasyon burada iptal edilir ve slot serbest
+ * kalır.
  */
 export async function expirePendingAppointments(): Promise<'ran' | 'skipped'> {
   return withJobLock('expire_pending_appointments', async () => {
@@ -55,7 +53,7 @@ export async function cleanupExpired(): Promise<'ran' | 'skipped'> {
   return withJobLock('cleanup_expired', async () => {
     const now = new Date();
 
-    const [sessions, tokens] = await Promise.all([
+    const [sessions, tokens, idempotencyKeys] = await Promise.all([
       prisma.chatSession.deleteMany({ where: { expiresAt: { lt: now } } }),
       // Süresi dolalı en az 7 gün olmuş jetonları sil — daha yenisi, hata
       // ayıklarken "az önce kim çıkış yaptı" sorusuna cevap verebilsin diye
@@ -63,11 +61,16 @@ export async function cleanupExpired(): Promise<'ran' | 'skipped'> {
       prisma.refreshToken.deleteMany({
         where: { expiresAt: { lt: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },
       }),
+      prisma.idempotencyKey.deleteMany({ where: { expiresAt: { lt: now } } }),
     ]);
 
-    if (sessions.count > 0 || tokens.count > 0) {
+    if (sessions.count > 0 || tokens.count > 0 || idempotencyKeys.count > 0) {
       logger.info(
-        { chatSessions: sessions.count, refreshTokens: tokens.count },
+        {
+          chatSessions: sessions.count,
+          refreshTokens: tokens.count,
+          idempotencyKeys: idempotencyKeys.count,
+        },
         'Süresi dolmuş kayıtlar temizlendi',
       );
     }

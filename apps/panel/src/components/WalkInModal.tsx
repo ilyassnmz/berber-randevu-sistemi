@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type FocusEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { isValidPhone } from '@berber/shared';
 import type { Service } from '../lib/types';
 import { createAppointment } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
@@ -27,6 +28,12 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
   const [phone, setPhone] = useState('');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  function handlePhoneBlur(e: FocusEvent<HTMLInputElement>) {
+    const value = e.target.value.trim();
+    setPhoneError(value && !isValidPhone(value) ? 'Geçerli bir telefon numarası girin' : null);
+  }
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -59,6 +66,10 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
       setError('Hizmet seçin');
       return;
     }
+    if (phone.trim() && !isValidPhone(phone.trim())) {
+      setError('Geçerli bir telefon numarası girin');
+      return;
+    }
 
     mutation.mutate();
   }
@@ -87,10 +98,16 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
             <span>Telefon (opsiyonel)</span>
             <input
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                if (phoneError) setPhoneError(null);
+              }}
+              onBlur={handlePhoneBlur}
               placeholder="0532 123 45 67"
               inputMode="tel"
+              aria-invalid={phoneError ? true : undefined}
             />
+            {phoneError && <span style={{ color: 'var(--danger)', fontSize: 13 }}>{phoneError}</span>}
           </label>
 
           <label className="field">

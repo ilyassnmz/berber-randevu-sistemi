@@ -44,6 +44,12 @@ export interface ChatContext {
   timeOffset?: number | undefined;
   /** İptal akışında seçilen randevu. */
   cancelTargetId?: string | undefined;
+  /**
+   * Özet ekranı gösterilirken pending_confirm olarak rezerve edilen randevu.
+   * Onayla → CONFIRMED'e geçer; Vazgeç ya da 5 dk içinde yanıt yoksa
+   * (expirePendingAppointments cron'u) iptal edilir.
+   */
+  pendingAppointmentId?: string | undefined;
 }
 
 /** Butonlardan dönen kimlikler. Metin yazan müşteri için de eşleşme yapılır. */
@@ -74,7 +80,7 @@ export const PREFIX = {
  * yanlış bir seçim yapan kişi akışta sıkışıp kalır.
  */
 export const GLOBAL_COMMANDS = {
-  MENU: ['menü', 'menu', 'başa dön', 'basa don', 'iptal et', 'vazgeç', 'vazgec'],
+  MENU: ['menü', 'menu', 'başa dön', 'basa don', 'iptal', 'iptal et', 'vazgeç', 'vazgec'],
   /** Meta politikası gereği zorunlu. */
   OPT_OUT: ['dur', 'stop', 'çıkar', 'cikar', 'abonelikten çık', 'iptal abonelik'],
   GREETING: ['merhaba', 'selam', 'slm', 'iyi günler', 'randevu', 'hey'],

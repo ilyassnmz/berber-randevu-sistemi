@@ -24,7 +24,7 @@ Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 | Üretime alma (Hetzner + domain) | ⚪ Sunucu/domain bekleniyor |
 | WhatsApp gerçek numara bağlantısı | ⚪ **Bilinçli olarak en son** — önce yukarıdakiler doğrulanacak |
 
-**Hazır olanlar:** Veri modeli (14 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in dahil) · WhatsApp webhook (imza doğrulaması + idempotency) · chatbot (randevu alma, iptal, listeleme) · yönetim paneli (PWA — giriş, günlük takvim, walk-in, randevu detayı, kara liste) · hatırlatma cron'ları · gizlilik politikası sayfası · dağıtım dosyaları (Dockerfile, docker-compose, Caddyfile)
+**Hazır olanlar:** Veri modeli (15 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in, erteleme, `Idempotency-Key` dahil) · müşteri listesi/detayı · WhatsApp webhook (imza doğrulaması + idempotency + spam koruması) · chatbot (randevu alma — gerçek `pending_confirm` rezervasyonuyla, iptal, listeleme) · yönetim paneli (PWA — giriş, açık/koyu tema, günlük takvim, walk-in, randevu detayı, erteleme, kara liste) · hatırlatma cron'ları · gizlilik politikası sayfası · dağıtım dosyaları (Dockerfile, docker-compose, Caddyfile)
 
 **Sıradaki:** Hetzner sunucusu + domain kurulup her şey WhatsApp'sız doğrulanacak, WhatsApp bağlantısı en son adım olacak. Ayrıntı: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
 
@@ -130,34 +130,46 @@ Panel, `/api` isteklerini geliştirme sırasında otomatik olarak API'ye yönlen
 ```
 apps/api/
   prisma/
-    schema.prisma      → Veri modeli (14 tablo)
+    schema.prisma      → Veri modeli (15 tablo)
     seed.ts            → Başlangıç verisi
     sql/               → Prisma'nın ifade edemediği SQL (çakışma kısıtı)
   src/
+    app.ts             → Express uygulaması (middleware zinciri, rotalar)
+    index.ts           → Giriş noktası, düzgün kapanma (graceful shutdown)
     config/env.ts      → Ortam doğrulama — eksikse uygulama açılışta ölür
     db/client.ts       → Prisma istemcisi
     jobs/
       lock.ts          → Satır tabanlı iş kilidi (job_locks tablosu)
       reminders.ts     → 1 gün / 1 saat önce hatırlatma
-      cleanup.ts       → Süresi dolmuş kayıt temizliği
+      cleanup.ts       → Süresi dolmuş kayıt temizliği (oturum, jeton, idempotency)
       scheduler.ts     → node-cron zamanlaması
     lib/
       time.ts          → Saat dilimi hesapları
       errors.ts        → Hata tipleri + veritabanı hata çevirisi
       logger.ts        → Loglama (telefon numaraları maskelenir)
-    middleware/        → Hata yakalama, auth, hız sınırı
+    middleware/
+      auth.ts          → Kimlik doğrulama + yetki kontrolü
+      error-handler.ts → Merkezi hata yakalama
+      (hız sınırı ayrı bir dosya değil — app.ts ve routes/auth.ts içinde)
     routes/            → HTTP uçları
     services/
       slots.ts         → Slot motoru ⭐
+      appointments.ts  → Randevu iş mantığı (oluşturma, iptal, erteleme...)
+      auth.ts          → Giriş, jeton rotasyonu, hesap kilitleme
+      customers.ts     → Müşteri listesi/detayı, kara liste
+      audit.ts         → Denetim kaydı
+      idempotency.ts   → `Idempotency-Key` desteği
       whatsapp/        → Meta istemcisi + sahte istemci + imza doğrulama
-      chatbot/         → Durum makinesi
+      chatbot/         → Durum makinesi + spam koruması
 apps/panel/
   src/
     lib/
       api.ts           → fetch sarmalayıcı — jeton yenileme, 401 yönetimi
       authStore.ts      → Oturum durumu (jeton BELLEKTE, localStorage'da değil)
+      theme.ts          → Açık/koyu tema tercihi (localStorage)
     pages/              → LoginPage, CalendarPage
-    components/         → AppointmentCard, WalkInModal, AppointmentDetailModal...
+    components/         → AppointmentCard, WalkInModal, AppointmentDetailModal,
+                          RescheduleModal...
 packages/shared/
   src/
     constants.ts       → Durum enum'ları

@@ -90,36 +90,61 @@ webhookRouter.post(
     // ── 2. Ayrıştır ────────────────────────────────────
     const { messages, statuses } = parseWebhook(req.body);
 
-    // Meta'yı bekletmemek için hemen yanıt veriyoruz; işleme arka planda sürüyor.
+    // Meta'yı bekletmemek için hemen yanıt veriyoruz; işleme GERÇEKTEN arka
+    // planda sürüyor — `trackBackgroundWork` sayesinde graceful shutdown bu
+    // işi bitmeden süreci kapatmıyor (bkz. index.ts → waitForPendingWebhookWork).
     res.sendStatus(200);
-
-    // ── 3. Durum bildirimleri ──────────────────────────
-    for (const status of statuses) {
-      await prisma.outboundMessage
-        .updateMany({
-          where: { wamid: status.wamid },
-          data: {
-            status: status.status,
-            errorCode: status.errorCode,
-            errorText: status.errorText,
-          },
-        })
-        .catch((error: unknown) => {
-          logger.error({ err: error, wamid: status.wamid }, 'Durum güncellenemedi');
-        });
-    }
-
-    // ── 4. Gelen mesajlar ──────────────────────────────
-    for (const message of messages) {
-      await processMessage(message).catch((error: unknown) => {
-        logger.error(
-          { err: error, from: maskPhone(message.from) },
-          'Gelen mesaj işlenemedi',
-        );
-      });
-    }
+    trackBackgroundWork(processStatusesAndMessages(statuses, messages));
   }),
 );
+
+async function processStatusesAndMessages(
+  statuses: ReturnType<typeof parseWebhook>['statuses'],
+  messages: InboundMessage[],
+): Promise<void> {
+  // ── Durum bildirimleri ──────────────────────────────
+  for (const status of statuses) {
+    await prisma.outboundMessage
+      .updateMany({
+        where: { wamid: status.wamid },
+        data: {
+          status: status.status,
+          errorCode: status.errorCode,
+          errorText: status.errorText,
+        },
+      })
+      .catch((error: unknown) => {
+        logger.error({ err: error, wamid: status.wamid }, 'Durum güncellenemedi');
+      });
+  }
+
+  // ── Gelen mesajlar ───────────────────────────────────
+  for (const message of messages) {
+    await processMessage(message).catch((error: unknown) => {
+      logger.error({ err: error, from: maskPhone(message.from) }, 'Gelen mesaj işlenemedi');
+    });
+  }
+}
+
+/**
+ * Gerçek arka plan işi izleme.
+ *
+ * `res.sendStatus(200)`'den sonra devam eden işlem, Node/Express açısından
+ * hâlâ aynı isteğin bir parçası değil — bağlantı kapanabilir, ama bizim
+ * promise'imiz sürüyor. Graceful shutdown (index.ts) bu set boşalana kadar
+ * süreci sonlandırmamalı, aksi halde bir webhook mesajı deploy sırasında
+ * yarıda kesilebilir.
+ */
+const pendingBackgroundWork = new Set<Promise<unknown>>();
+
+function trackBackgroundWork(work: Promise<unknown>): void {
+  pendingBackgroundWork.add(work);
+  work.finally(() => pendingBackgroundWork.delete(work));
+}
+
+export async function waitForPendingWebhookWork(): Promise<void> {
+  await Promise.allSettled([...pendingBackgroundWork]);
+}
 
 /**
  * Tek bir gelen mesajı işler.

@@ -46,4 +46,9 @@ RUN npm run build --workspace=@berber/shared \
 ENV NODE_ENV=production
 EXPOSE 3000
 
+# node:20-slim'de hazır gelen, gerekçesiz root'la çalışmamak için.
+# Uygulama çalışırken hiçbir yerel dosyaya yazmıyor (loglar stdout'a,
+# veritabanı Neon'da) — chown'a gerek yok, salt-okunur erişim yeterli.
+USER node
+
 CMD ["node", "apps/api/dist/index.js"]

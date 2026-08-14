@@ -20,6 +20,7 @@ import {
   getAppointment,
 } from '../services/appointments.js';
 import { ValidationError } from '../lib/errors.js';
+import { getIdempotentResponse, saveIdempotentResponse } from '../services/idempotency.js';
 
 export const appointmentsRouter: Router = Router();
 
@@ -98,8 +99,21 @@ appointmentsRouter.get(
 appointmentsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
-    const input = createAppointmentSchema.parse(req.body);
     const auth = req.auth!;
+
+    // ── Idempotency-Key ───────────────────────────────
+    // Ağ hatası sonrası "gönder"e tekrar basılırsa aynı walk-in randevu
+    // iki kez oluşmasın. Anahtar dükkan bazında benzersiz tutuluyor.
+    const idempotencyKey = req.header('Idempotency-Key');
+    if (idempotencyKey) {
+      const cached = await getIdempotentResponse(auth.shopId, idempotencyKey);
+      if (cached) {
+        res.status(cached.statusCode).json(cached.body);
+        return;
+      }
+    }
+
+    const input = createAppointmentSchema.parse(req.body);
 
     assertCanAccessBarber(auth, input.barberId);
 
@@ -121,7 +135,13 @@ appointmentsRouter.post(
       notifyCustomer: input.notifyCustomer,
     });
 
-    res.status(201).json({ appointment });
+    const body = { appointment };
+
+    if (idempotencyKey) {
+      await saveIdempotentResponse(auth.shopId, idempotencyKey, 201, body);
+    }
+
+    res.status(201).json(body);
   }),
 );
 

@@ -495,6 +495,25 @@ model JobLock {
   @@map("job_locks")
 }
 
+/// `Idempotency-Key` başlığı desteği (todo.md M3): aynı anahtarla tekrar
+/// gelen bir istek (ağ hatası sonrası yeniden deneme gibi) işi tekrar
+/// yapmak yerine ilk seferin yanıtını aynen döner.
+model IdempotencyKey {
+  id         String   @id @default(uuid()) @db.Uuid
+  shopId     String   @map("shop_id") @db.Uuid
+  key        String
+  statusCode Int      @map("status_code")
+  response   Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// 24 saat sonra süresi dolar — sonsuza dek tutmaya gerek yok, aynı
+  /// anahtarla haftalar sonra gelen bir istek zaten yeni bir istektir.
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([shopId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
 // ─────────────────────────────────────────────────────────
 // Denetim kaydı
 // ─────────────────────────────────────────────────────────

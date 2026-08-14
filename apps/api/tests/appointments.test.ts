@@ -268,6 +268,60 @@ describe('POST / — walk-in randevu', () => {
     expect(res.body.error.code).toBe('SLOT_UNAVAILABLE');
   });
 
+  it('Idempotency-Key ile tekrar gönderilen istek ikinci bir randevu oluşturmaz', async () => {
+    const key = `test-key-${Date.now()}`;
+    const body = {
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: slotAt('19:30'),
+      customerName: 'Tekrar Denemesi',
+    };
+
+    const first = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .set('Idempotency-Key', key)
+      .send(body);
+    const second = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .set('Idempotency-Key', key)
+      .send(body);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.appointment.id).toBe(first.body.appointment.id);
+
+    const count = await testPrisma.appointment.count({
+      where: { shopId: fx.shopId, customer: { name: 'Tekrar Denemesi' } },
+    });
+    expect(count).toBe(1);
+  });
+
+  it('Idempotency-Key farklıysa ayrı randevu oluşturur', async () => {
+    const bodyFor = (time: string) => ({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: slotAt(time),
+      customerName: 'Farklı Anahtar',
+    });
+
+    const first = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .set('Idempotency-Key', `key-a-${Date.now()}`)
+      .send(bodyFor('17:15'));
+    const second = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .set('Idempotency-Key', `key-b-${Date.now()}`)
+      .send(bodyFor('18:00'));
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.appointment.id).not.toBe(first.body.appointment.id);
+  });
+
   it('dolu saate ikinci randevuyu reddeder', async () => {
     await createWalkIn(adminToken, fx.adminId, '09:00');
     const second = await createWalkIn(adminToken, fx.adminId, '09:00');
@@ -561,6 +615,45 @@ describe('Müşteri bildirimleri (notifyCustomer)', () => {
     fake.clear();
     const res = await createWithPhone('13:30', '+905551110004');
     expect(res.status).toBe(201);
+    expect(fake.messages).toHaveLength(0);
+  });
+});
+
+describe('Gelmedi (no-show) uyarısı', () => {
+  async function createWalkInWithPhone(time: string, phone: string) {
+    return request(app).post(BASE).set(auth(adminToken)).send({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: slotAt(time),
+      customerName: 'No-show Testi',
+      customerPhone: phone,
+    });
+  }
+
+  it('3. gelmedi de tam eşikte bir kez uyarı mesajı gönderir, 4.\'te tekrar göndermez', async () => {
+    const phone = '+905551110005';
+
+    const first = await createWalkInWithPhone('09:00', phone);
+    const second = await createWalkInWithPhone('10:30', phone);
+    const third = await createWalkInWithPhone('12:00', phone);
+    const fourth = await createWalkInWithPhone('13:30', phone);
+
+    await request(app).post(`${BASE}/${first.body.appointment.id}/no-show`).set(auth(adminToken));
+    await request(app).post(`${BASE}/${second.body.appointment.id}/no-show`).set(auth(adminToken));
+
+    fake.clear();
+    const thirdRes = await request(app)
+      .post(`${BASE}/${third.body.appointment.id}/no-show`)
+      .set(auth(adminToken));
+    expect(thirdRes.status).toBe(200);
+    expect(fake.messages).toHaveLength(1);
+    expect(fake.messages[0]!.to).toBe(phone);
+
+    fake.clear();
+    const fourthRes = await request(app)
+      .post(`${BASE}/${fourth.body.appointment.id}/no-show`)
+      .set(auth(adminToken));
+    expect(fourthRes.status).toBe(200);
     expect(fake.messages).toHaveLength(0);
   });
 });

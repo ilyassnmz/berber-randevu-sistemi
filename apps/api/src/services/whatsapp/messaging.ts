@@ -50,6 +50,55 @@ interface SendOutcome {
   result?: SendResult;
 }
 
+/**
+ * Meta'nın bilinen hata kodları için özel davranış (todo.md M5).
+ *
+ * Üçü de sadece `logger.error` ile geçiştirilmemeli:
+ *   - 131047 (yeniden etkileşim gerekli): `sendToCustomer` bunu yakalayıp
+ *     şablona düşer (bkz. aşağısı) — burada sadece loglanır, asıl fallback
+ *     `sendToCustomer` içinde çünkü hangi şablonun kullanılacağını yalnızca
+ *     o çağıran bilir.
+ *   - 131026 (mesaj teslim edilemedi — numara WhatsApp'ta değil): berbere
+ *     bildirim GEREKİYOR ama push bildirim altyapısı yok (README'de v1.1'e
+ *     ertelenmiş) — bugün yapılabilecek en dürüst şey, bunu ayrı ve aranabilir
+ *     bir seviyede loglamak, panelin randevu detayında zaten `errorCode`
+ *     görünür durumda.
+ *   - 132000 (şablon parametre uyuşmazlığı): bizim kod/yapılandırma hatamız
+ *     (Meta'ya kayıtlı şablonla `templates.ts`'teki tanım uyuşmuyor) —
+ *     kullanıcı hatası değil, geliştirici hatası; ayrı ve daha yüksek
+ *     önem seviyesiyle loglanır ki log taramasında kaybolmasın.
+ */
+const META_ERROR_CODES = {
+  REENGAGEMENT_REQUIRED: '131047',
+  UNDELIVERABLE: '131026',
+  TEMPLATE_PARAM_MISMATCH: '132000',
+} as const;
+
+function logWhatsAppErrorCode(
+  errorCode: string | null | undefined,
+  context: Record<string, unknown>,
+): void {
+  switch (errorCode) {
+    case META_ERROR_CODES.REENGAGEMENT_REQUIRED:
+      logger.warn({ ...context, metaErrorCode: errorCode }, 'Meta: 24 saat penceresi kapanmış');
+      break;
+    case META_ERROR_CODES.UNDELIVERABLE:
+      logger.error(
+        { ...context, metaErrorCode: errorCode },
+        'Meta: mesaj teslim edilemedi (numara WhatsApp\'ta değil) — berbere bildirim için push altyapısı yok, panelden kontrol edilmeli',
+      );
+      break;
+    case META_ERROR_CODES.TEMPLATE_PARAM_MISMATCH:
+      logger.error(
+        { ...context, metaErrorCode: errorCode },
+        'Meta: şablon parametreleri uyuşmuyor — bu bir KOD/YAPILANDIRMA hatası, templates.ts Meta panelindeki tanımla eşleşmiyor olabilir',
+      );
+      break;
+    default:
+      break;
+  }
+}
+
 async function persistOutbound(params: {
   shopId: string;
   customerId: string | null;
@@ -76,6 +125,13 @@ async function persistOutbound(params: {
   } catch (error) {
     // Kayıt tutulamadı diye mesaj gönderimi başarısız sayılmaz.
     logger.error({ err: error }, 'Giden mesaj kaydı yazılamadı');
+  }
+
+  if (!params.result.success) {
+    logWhatsAppErrorCode(params.result.errorCode, {
+      shopId: params.shopId,
+      customerId: params.customerId,
+    });
   }
 }
 
@@ -188,7 +244,16 @@ export async function sendToCustomer(
   if (!customer) return { sent: false, reason: 'no_phone' };
 
   if (isWithinServiceWindow(customer.lastInboundAt)) {
-    return replyToCustomer(customer, options.text);
+    const outcome = await replyToCustomer(customer, options.text);
+
+    // Pencere bizim hesabımıza göre açık görünüyordu ama Meta'ya göre
+    // kapanmış (131047) — nadir bir yarış durumu (ör. tam sınırda). Sessizce
+    // başarısız bırakmak yerine şablona düşüyoruz, tam da bu kodun anlamı bu.
+    if (!outcome.sent && outcome.result?.errorCode === META_ERROR_CODES.REENGAGEMENT_REQUIRED) {
+      return sendTemplateToCustomer(customerId, options.template, options.templateParams);
+    }
+
+    return outcome;
   }
 
   logger.debug(

@@ -85,6 +85,17 @@ export const TEMPLATES = {
       'Uygun değilse bu mesaja yanıt verin.',
     params: ['eski tarih ve saat', 'yeni tarih ve saat'],
   },
+
+  NO_SHOW_WARNING: {
+    name: 'gelmedi_uyarisi',
+    category: 'UTILITY',
+    language: 'tr',
+    body:
+      'Randevularınıza gelmediğinizi fark ettik ⚠️\n\n' +
+      'Son {{1}} randevunuza gelmediniz. Lütfen yalnızca gelebileceğiniz ' +
+      'zamanlarda randevu alın — aksi halde yeni randevu alımınız kısıtlanabilir.',
+    params: ['no-show sayısı'],
+  },
 } as const satisfies Record<string, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof TEMPLATES;

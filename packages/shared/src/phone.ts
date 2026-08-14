@@ -14,6 +14,7 @@ const E164_TR_MOBILE = /^\+905\d{9}$/;
  *
  * Kabul edilen girişler:
  *   0532 123 45 67 · 05321234567 · 532 123 45 67 · +90 532 123 45 67 · 905321234567
+ *   00905321234567 (uluslararası erişim kodu "00" ile)
  *
  * @returns E.164 formatında numara, geçersizse `null`
  */
@@ -22,6 +23,13 @@ export function normalizePhone(input: string): string | null {
 
   // Rakam dışındaki her şeyi at (boşluk, tire, parantez, artı)
   let digits = input.replace(/\D/g, '');
+
+  // Uluslararası erişim kodu "00" + ülke kodu 90 → düz "90" gibi ele al
+  // (0090532... → 90532...). Bu adım ülke kodu kontrolünden ÖNCE gelmeli,
+  // aksi halde tek bir "0" atılıp geri kalan basamak sayısı tutmaz.
+  if (digits.startsWith('0090')) {
+    digits = digits.slice(2);
+  }
 
   // Ülke kodu 90 ile başlıyorsa at
   if (digits.startsWith('90')) {

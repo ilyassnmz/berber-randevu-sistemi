@@ -349,6 +349,41 @@ function assertNotFinalised(status: AppointmentStatus, action: string): void {
   }
 }
 
+/**
+ * Chatbot'ta "Onayla" ile pending_confirm → confirmed geçişi.
+ *
+ * Randevu, özet ekranı gösterilirken (showConfirmation) zaten pending_confirm
+ * olarak rezerve edilmiş oluyor — burada sadece onay yazılıyor. Süresi
+ * dolmuşsa (confirmDeadline geçmiş) expirePendingAppointments cron'u zaten
+ * iptal etmiştir; bu durumda NOT_PENDING hatası döner.
+ */
+export async function confirmPendingAppointment(shopId: string, appointmentId: string) {
+  const appointment = await loadAppointment(shopId, appointmentId);
+
+  if (appointment.status !== APPOINTMENT_STATUS.PENDING_CONFIRM) {
+    throw new ConflictError(
+      'Bu randevunun onay süresi dolmuş ya da zaten işlenmiş.',
+      'NOT_PENDING',
+    );
+  }
+
+  const updated = await prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { status: APPOINTMENT_STATUS.CONFIRMED, confirmDeadline: null },
+    include: { customer: true, service: true, barber: true },
+  });
+
+  await recordAudit({
+    shopId,
+    actorId: null,
+    action: AUDIT_ACTIONS.APPOINTMENT_CONFIRM,
+    entityType: 'appointment',
+    entityId: appointmentId,
+  });
+
+  return updated;
+}
+
 export async function cancelAppointment(
   shopId: string,
   appointmentId: string,
@@ -480,7 +515,7 @@ export async function markNoShow(
   if (auth) assertCanAccessBarber(auth, appointment.barberId);
   assertNotFinalised(appointment.status, 'gelmedi');
 
-  const [updated] = await prisma.$transaction([
+  const [updated, updatedCustomer] = await prisma.$transaction([
     prisma.appointment.update({
       where: { id: appointmentId },
       data: { status: APPOINTMENT_STATUS.NO_SHOW },
@@ -500,6 +535,22 @@ export async function markNoShow(
     entityId: appointmentId,
     metadata: { customerId: appointment.customerId },
   });
+
+  // todo.md M6 "Kötüye Kullanım Önlemleri": 3. no-show'da uyarı mesajı.
+  // Yalnızca eşiğe TAM ulaşıldığında gönderilir (=== 3) — her sonraki
+  // no-show'da tekrar tekrar uyarı gitmesin diye.
+  if (updatedCustomer.noShowCount === 3) {
+    await sendToCustomer(appointment.customerId, {
+      text:
+        'Randevularınıza gelmediğinizi fark ettik ⚠️\n\n' +
+        'Son 3 randevunuza gelmediniz. Lütfen yalnızca gelebileceğiniz ' +
+        'zamanlarda randevu alın — aksi halde yeni randevu alımınız kısıtlanabilir.',
+      template: 'NO_SHOW_WARNING',
+      templateParams: ['3'],
+    }).catch((error: unknown) => {
+      logger.error({ err: error, customerId: appointment.customerId }, 'Gelmedi uyarısı gönderilemedi');
+    });
+  }
 
   return updated;
 }

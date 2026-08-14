@@ -1,12 +1,42 @@
 import { Router } from 'express';
-import { blacklistCustomerSchema } from '@berber/shared';
+import { blacklistCustomerSchema, listCustomersQuerySchema } from '@berber/shared';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { requireAuth } from '../middleware/auth.js';
-import { blacklistCustomer, unblacklistCustomer } from '../services/customers.js';
+import {
+  blacklistCustomer,
+  unblacklistCustomer,
+  listCustomers,
+  getCustomer,
+} from '../services/customers.js';
 
 export const customersRouter: Router = Router();
 
 customersRouter.use(requireAuth);
+
+/** Sayfalamalı, aranabilir müşteri listesi. */
+customersRouter.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const query = listCustomersQuerySchema.parse(req.query);
+    const result = await listCustomers({
+      shopId: req.auth!.shopId,
+      search: query.search,
+      blacklistedOnly: query.blacklistedOnly,
+      cursor: query.cursor,
+      limit: query.limit,
+    });
+    res.json(result);
+  }),
+);
+
+/** Müşteri detayı, randevu geçmişiyle. */
+customersRouter.get(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const customer = await getCustomer(req.auth!.shopId, req.params.id!);
+    res.json({ customer });
+  }),
+);
 
 customersRouter.put(
   '/:id/blacklist',
