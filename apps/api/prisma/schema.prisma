@@ -185,6 +185,16 @@ model Customer {
   /// Müşterinin son mesaj attığı an. WhatsApp 24 saat penceresi bundan hesaplanır.
   lastInboundAt DateTime? @map("last_inbound_at") @db.Timestamptz(3)
 
+  /// Spam koruması (todo.md M4/M6): kayan 1 dakikalık pencerede gelen mesaj
+  /// sayısı. DB'de tutulur, bellekte DEĞİL — birden fazla sunucu örneği
+  /// çalışsa bile sayaç ortak kalsın diye (bkz. chatbot/states.ts başındaki
+  /// aynı gerekçe).
+  messageBurstCount       Int       @default(0) @map("message_burst_count")
+  messageBurstWindowStart DateTime? @map("message_burst_window_start") @db.Timestamptz(3)
+  /// 1 dakikada 10'dan fazla mesaj gelirse bu an + 5 dakikaya ayarlanır;
+  /// bu ana kadar gelen mesajlar sessizce (yanıtsız) atlanır.
+  silencedUntil DateTime? @map("silenced_until") @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

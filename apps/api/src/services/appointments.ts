@@ -6,7 +6,13 @@ import {
 } from '@berber/shared';
 import { prisma } from '../db/client.js';
 import { computeAvailableSlots, isSlotBookable, type Slot } from './slots.js';
-import { localDayBounds, formatLocalTime, addMinutes, getZonedParts } from '../lib/time.js';
+import {
+  localDayBounds,
+  formatLocalTime,
+  formatDateTr,
+  addMinutes,
+  getZonedParts,
+} from '../lib/time.js';
 import {
   NotFoundError,
   ValidationError,
@@ -16,12 +22,21 @@ import {
 } from '../lib/errors.js';
 import { recordAudit, AUDIT_ACTIONS } from './audit.js';
 import { logger } from '../lib/logger.js';
+import { assertCanAccessBarber, type AuthContext } from '../middleware/auth.js';
+import { sendToCustomer } from './whatsapp/messaging.js';
 
 /**
  * Randevu iş mantığı.
  *
  * Slot motoru (slots.ts) saf ve veritabanından bağımsız kalsın diye, veriyi
  * toplayıp ona besleme işi burada yapılıyor.
+ *
+ * ⚠️ Yetki kontrolü (`assertCanAccessBarber`) route katmanında zaten
+ * yapılıyor, ama burada da tekrarlanıyor — `auth` parametresi verildiğinde.
+ * İki katmanlı savunma: servis fonksiyonu ileride başka bir yoldan (yeni bir
+ * route, bir cron job) çağrılırsa staff/admin ayrımı sessizce atlanmaz.
+ * `auth` opsiyonel çünkü chatbot akışı (müşteri tarafı, berber kimliği yok)
+ * bu fonksiyonları auth context'i OLMADAN çağırıyor.
  */
 
 // ─────────────────────────────────────────────────────────
@@ -121,7 +136,10 @@ export async function getAvailableSlots(
   serviceId: string,
   date: string,
   now = new Date(),
+  auth?: AuthContext,
 ): Promise<Slot[]> {
+  if (auth) assertCanAccessBarber(auth, barberId);
+
   const ctx = await loadSlotContext(shopId, barberId, serviceId, date);
   return computeAvailableSlots({ ...ctx, date, now });
 }
@@ -140,6 +158,9 @@ export interface CreateAppointmentParams {
   source: 'whatsapp' | 'panel';
   status?: AppointmentStatus;
   actorId?: string | null;
+  auth?: AuthContext;
+  /** Panelden walk-in oluşturulurken müşteriye onay mesajı gönderilsin mi? */
+  notifyCustomer?: boolean;
 }
 
 /**
@@ -161,7 +182,11 @@ export async function createAppointment(params: CreateAppointmentParams) {
     source,
     status = APPOINTMENT_STATUS.CONFIRMED,
     actorId = null,
+    auth,
+    notifyCustomer = false,
   } = params;
+
+  if (auth) assertCanAccessBarber(auth, barberId);
 
   const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new NotFoundError('Dükkan bulunamadı');
@@ -219,6 +244,27 @@ export async function createAppointment(params: CreateAppointmentParams) {
       entityId: appointment.id,
       metadata: { source, startsAt: startsAt.toISOString() },
     });
+
+    if (notifyCustomer && appointment.customer.phone) {
+      await sendToCustomer(appointment.customerId, {
+        text:
+          '✅ Randevunuz oluşturuldu!\n\n' +
+          `📅 ${formatDateTr(localDate, shop.timezone)}\n` +
+          `🕘 ${formatLocalTime(startsAt, shop.timezone)}\n` +
+          `💈 ${appointment.barber.name}\n` +
+          `✂️ ${appointment.service.name}`,
+        template: 'APPOINTMENT_CONFIRMED',
+        templateParams: [
+          formatDateTr(localDate, shop.timezone),
+          formatLocalTime(startsAt, shop.timezone),
+          appointment.barber.name,
+          appointment.service.name,
+        ],
+      }).catch((error: unknown) => {
+        // Bildirim başarısız olsa da randevu geçerli — sessizce loglanır.
+        logger.error({ err: error, appointmentId: appointment.id }, 'Onay mesajı gönderilemedi');
+      });
+    }
 
     return appointment;
   } catch (error) {
@@ -309,8 +355,11 @@ export async function cancelAppointment(
   cancelledBy: 'customer' | 'barber' | 'system',
   reason?: string,
   actorId?: string | null,
+  notifyCustomer = false,
+  auth?: AuthContext,
 ) {
   const appointment = await loadAppointment(shopId, appointmentId);
+  if (auth) assertCanAccessBarber(auth, appointment.barberId);
   assertNotFinalised(appointment.status, 'iptal');
 
   const updated = await prisma.appointment.update({
@@ -332,6 +381,31 @@ export async function cancelAppointment(
     entityId: appointmentId,
     metadata: { cancelledBy, reason: reason ?? null },
   });
+
+  // Yalnızca berber iptal ettiğinde bildirim anlamlı — müşteri kendi iptal
+  // ettiyse (chatbot) zaten biliyor.
+  if (notifyCustomer && cancelledBy === 'barber' && updated.customer.phone) {
+    const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+    if (shop) {
+      await sendToCustomer(updated.customerId, {
+        text:
+          '❌ Randevunuz iptal edildi.\n\n' +
+          `📅 ${formatDateTr(formatLocalDateFromInstant(updated.startsAt, shop.timezone), shop.timezone)} — ` +
+          `🕘 ${formatLocalTime(updated.startsAt, shop.timezone)}\n\n` +
+          'Özür dileriz. Yeni randevu için bize yazabilirsiniz.',
+        template: 'CANCELLED_BY_BARBER',
+        templateParams: [
+          formatDateTr(formatLocalDateFromInstant(updated.startsAt, shop.timezone), shop.timezone),
+          formatLocalTime(updated.startsAt, shop.timezone),
+        ],
+      }).catch((error: unknown) => {
+        logger.error(
+          { err: error, appointmentId: updated.id },
+          'İptal bildirimi gönderilemedi',
+        );
+      });
+    }
+  }
 
   return updated;
 }
@@ -367,8 +441,10 @@ export async function completeAppointment(
   shopId: string,
   appointmentId: string,
   actorId: string,
+  auth?: AuthContext,
 ) {
   const appointment = await loadAppointment(shopId, appointmentId);
+  if (auth) assertCanAccessBarber(auth, appointment.barberId);
   assertNotFinalised(appointment.status, 'tamamlandı');
 
   const updated = await prisma.appointment.update({
@@ -394,8 +470,14 @@ export async function completeAppointment(
  * İkisi aynı transaction'da: sayaç artmadan durum değişirse "gelmedi" geçmişi
  * eksik kalır ve kara liste kararı yanlış veriye dayanır.
  */
-export async function markNoShow(shopId: string, appointmentId: string, actorId: string) {
+export async function markNoShow(
+  shopId: string,
+  appointmentId: string,
+  actorId: string,
+  auth?: AuthContext,
+) {
   const appointment = await loadAppointment(shopId, appointmentId);
+  if (auth) assertCanAccessBarber(auth, appointment.barberId);
   assertNotFinalised(appointment.status, 'gelmedi');
 
   const [updated] = await prisma.$transaction([
@@ -427,8 +509,11 @@ export async function rescheduleAppointment(
   appointmentId: string,
   newStartsAt: Date,
   actorId?: string | null,
+  notifyCustomer = false,
+  auth?: AuthContext,
 ) {
   const appointment = await loadAppointment(shopId, appointmentId);
+  if (auth) assertCanAccessBarber(auth, appointment.barberId);
   assertNotFinalised(appointment.status, 'saat değiştirme');
 
   const shop = await prisma.shop.findUnique({ where: { id: shopId } });
@@ -471,6 +556,28 @@ export async function rescheduleAppointment(
         to: newStartsAt.toISOString(),
       },
     });
+
+    if (notifyCustomer && updated.customer.phone) {
+      const previousLocalDate = formatLocalDateFromInstant(previousStartsAt, shop.timezone);
+      const newLocalDate = formatLocalDateFromInstant(newStartsAt, shop.timezone);
+      const previousLabel = `${formatDateTr(previousLocalDate, shop.timezone)} ${formatLocalTime(previousStartsAt, shop.timezone)}`;
+      const newLabel = `${formatDateTr(newLocalDate, shop.timezone)} ${formatLocalTime(newStartsAt, shop.timezone)}`;
+
+      await sendToCustomer(updated.customerId, {
+        text:
+          '🔄 Randevu saatiniz değişti.\n\n' +
+          `Eski: ${previousLabel}\n` +
+          `Yeni: ${newLabel}\n\n` +
+          'Uygun değilse bize yazabilirsiniz.',
+        template: 'RESCHEDULED_BY_BARBER',
+        templateParams: [previousLabel, newLabel],
+      }).catch((error: unknown) => {
+        logger.error(
+          { err: error, appointmentId: updated.id },
+          'Saat değişikliği bildirimi gönderilemedi',
+        );
+      });
+    }
 
     return updated;
   } catch (error) {
@@ -542,6 +649,8 @@ export async function listAppointments(params: ListAppointmentsParams) {
   };
 }
 
-export async function getAppointment(shopId: string, appointmentId: string) {
-  return loadAppointment(shopId, appointmentId);
+export async function getAppointment(shopId: string, appointmentId: string, auth?: AuthContext) {
+  const appointment = await loadAppointment(shopId, appointmentId);
+  if (auth) assertCanAccessBarber(auth, appointment.barberId);
+  return appointment;
 }

@@ -1,11 +1,21 @@
 import type { RequestHandler, Request } from 'express';
-import { BARBER_ROLE } from '@berber/shared';
+import { BARBER_ROLE, type BarberRole } from '@berber/shared';
 import { verifyAccessToken } from '../lib/tokens.js';
 import { UnauthorizedError, ForbiddenError } from '../lib/errors.js';
 
 /**
  * Kimlik doğrulama ve yetki ara katmanları.
  */
+
+/**
+ * `req.auth`'un Express'ten bağımsız hali — servis katmanı Express
+ * tiplerine bağlanmadan bunu kullanabilsin diye ayrı tanımlı.
+ */
+export interface AuthContext {
+  barberId: string;
+  shopId: string;
+  role: BarberRole;
+}
 
 /** `Authorization: Bearer <token>` başlığından jetonu çıkarır. */
 function extractBearerToken(req: Request): string | null {
@@ -56,10 +66,7 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
  * ⚠️ Bu kontrol rota seviyesinde bırakılmıyor, servis katmanında da çağrılıyor.
  * Tek katmanlı yetki kontrolü, yeni bir rota eklendiğinde unutulmaya açıktır.
  */
-export function assertCanAccessBarber(
-  auth: NonNullable<Request['auth']>,
-  targetBarberId: string,
-): void {
+export function assertCanAccessBarber(auth: AuthContext, targetBarberId: string): void {
   if (auth.role === BARBER_ROLE.ADMIN) return;
   if (auth.barberId === targetBarberId) return;
 
@@ -73,7 +80,7 @@ export function assertCanAccessBarber(
  * `barberId` parametresine güvenilmez.
  */
 export function resolveBarberFilter(
-  auth: NonNullable<Request['auth']>,
+  auth: AuthContext,
   requestedBarberId?: string,
 ): string | undefined {
   if (auth.role !== BARBER_ROLE.ADMIN) {

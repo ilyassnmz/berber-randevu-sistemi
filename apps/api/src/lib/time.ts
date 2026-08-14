@@ -9,6 +9,8 @@
  * hesaplıyor, böylece dükkan başka bir saat dilimine taşınırsa da doğru çalışır.
  */
 
+import { DAY_NAMES_TR, MONTH_NAMES_TR } from '@berber/shared';
+
 /** "09:30" → { hour: 9, minute: 30 }. Geçersizse hata fırlatır. */
 export function parseTimeString(time: string): { hour: number; minute: number } {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
@@ -153,6 +155,19 @@ export function formatLocalTime(instant: Date, timeZone: string): string {
 export function formatLocalDate(instant: Date, timeZone: string): string {
   const { year, month, day } = getZonedParts(instant, timeZone);
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * Okunabilir Türkçe tarih: "Pazartesi, 12 Ağustos".
+ *
+ * Chatbot ve müşteri bildirimleri (panelden iptal/erteleme) aynı biçimi
+ * kullansın diye burada — iki ayrı yerde tutulursa biri değişince diğeri
+ * unutulur.
+ */
+export function formatDateTr(date: string, timeZone: string): string {
+  const { year, month, day } = parseDateString(date);
+  const dayOfWeek = getZonedParts(new Date(Date.UTC(year, month - 1, day, 12)), timeZone).dayOfWeek;
+  return `${DAY_NAMES_TR[dayOfWeek]}, ${day} ${MONTH_NAMES_TR[month - 1]}`;
 }
 
 /** Verilen yerel tarihin başlangıcı (00:00) ve ertesi günün başlangıcı. */

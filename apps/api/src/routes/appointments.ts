@@ -39,7 +39,7 @@ appointmentsRouter.get(
     // Fırat başka berberin takvimini sorgulayamaz
     assertCanAccessBarber(auth, barberId);
 
-    const slots = await getAvailableSlots(auth.shopId, barberId, serviceId, date);
+    const slots = await getAvailableSlots(auth.shopId, barberId, serviceId, date, new Date(), auth);
 
     res.json({
       slots: slots.map((s) => ({
@@ -81,7 +81,7 @@ appointmentsRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const auth = req.auth!;
-    const appointment = await getAppointment(auth.shopId, req.params.id!);
+    const appointment = await getAppointment(auth.shopId, req.params.id!, auth);
 
     assertCanAccessBarber(auth, appointment.barberId);
 
@@ -117,6 +117,8 @@ appointmentsRouter.post(
       customerPhone: input.customerPhone,
       source: APPOINTMENT_SOURCE.PANEL,
       actorId: auth.barberId,
+      auth,
+      notifyCustomer: input.notifyCustomer,
     });
 
     res.status(201).json({ appointment });
@@ -132,10 +134,10 @@ appointmentsRouter.post(
 appointmentsRouter.post(
   '/:id/cancel',
   asyncHandler(async (req, res) => {
-    const { reason } = cancelAppointmentSchema.parse(req.body ?? {});
+    const { reason, notifyCustomer } = cancelAppointmentSchema.parse(req.body ?? {});
     const auth = req.auth!;
 
-    const existing = await getAppointment(auth.shopId, req.params.id!);
+    const existing = await getAppointment(auth.shopId, req.params.id!, auth);
     assertCanAccessBarber(auth, existing.barberId);
 
     const appointment = await cancelAppointment(
@@ -144,6 +146,8 @@ appointmentsRouter.post(
       'barber',
       reason,
       auth.barberId,
+      notifyCustomer,
+      auth,
     );
 
     res.json({ appointment });
@@ -155,10 +159,15 @@ appointmentsRouter.post(
   asyncHandler(async (req, res) => {
     const auth = req.auth!;
 
-    const existing = await getAppointment(auth.shopId, req.params.id!);
+    const existing = await getAppointment(auth.shopId, req.params.id!, auth);
     assertCanAccessBarber(auth, existing.barberId);
 
-    const appointment = await completeAppointment(auth.shopId, req.params.id!, auth.barberId);
+    const appointment = await completeAppointment(
+      auth.shopId,
+      req.params.id!,
+      auth.barberId,
+      auth,
+    );
     res.json({ appointment });
   }),
 );
@@ -168,10 +177,10 @@ appointmentsRouter.post(
   asyncHandler(async (req, res) => {
     const auth = req.auth!;
 
-    const existing = await getAppointment(auth.shopId, req.params.id!);
+    const existing = await getAppointment(auth.shopId, req.params.id!, auth);
     assertCanAccessBarber(auth, existing.barberId);
 
-    const appointment = await markNoShow(auth.shopId, req.params.id!, auth.barberId);
+    const appointment = await markNoShow(auth.shopId, req.params.id!, auth.barberId, auth);
     res.json({ appointment });
   }),
 );
@@ -182,7 +191,7 @@ appointmentsRouter.post(
     const input = rescheduleAppointmentSchema.parse(req.body);
     const auth = req.auth!;
 
-    const existing = await getAppointment(auth.shopId, req.params.id!);
+    const existing = await getAppointment(auth.shopId, req.params.id!, auth);
     assertCanAccessBarber(auth, existing.barberId);
 
     const startsAt = new Date(input.startsAt);
@@ -195,6 +204,8 @@ appointmentsRouter.post(
       req.params.id!,
       startsAt,
       auth.barberId,
+      input.notifyCustomer,
+      auth,
     );
 
     res.json({ appointment });

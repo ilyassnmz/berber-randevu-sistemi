@@ -3,6 +3,9 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { createFixture, destroyFixture, testPrisma, type TestFixture } from './helpers.js';
 import { zonedTimeToUtc } from '../src/lib/time.js';
+import { FakeWhatsAppClient, setWhatsAppClient } from '../src/services/whatsapp/client.js';
+import { cancelAppointment } from '../src/services/appointments.js';
+import { BARBER_ROLE } from '@berber/shared';
 
 /**
  * Randevu API'si — entegrasyon testleri.
@@ -15,6 +18,8 @@ import { zonedTimeToUtc } from '../src/lib/time.js';
 const app = createApp();
 const BASE = '/api/v1/appointments';
 const TZ = 'Europe/Istanbul';
+
+const fake = new FakeWhatsAppClient();
 
 let fx: TestFixture;
 let adminToken: string;
@@ -38,6 +43,7 @@ async function loginToken(email: string): Promise<string> {
 }
 
 beforeAll(async () => {
+  setWhatsAppClient(fake);
   fx = await createFixture();
 
   // Her iki berbere de tam haftalık çalışma düzeni ver
@@ -62,6 +68,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await destroyFixture(fx.shopId);
   await testPrisma.$disconnect();
+  setWhatsAppClient(null);
 });
 
 beforeEach(async () => {
@@ -492,5 +499,95 @@ describe('GET / — listeleme', () => {
 
     expect(page2.body.items).toHaveLength(1);
     expect(page2.body.nextCursor).toBeNull();
+  });
+});
+
+describe('Müşteri bildirimleri (notifyCustomer)', () => {
+  async function createWithPhone(time: string, phone: string) {
+    return request(app).post(BASE).set(auth(adminToken)).send({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: slotAt(time),
+      customerName: 'Bildirim Testi',
+      customerPhone: phone,
+    });
+  }
+
+  it('iptalde varsayılan olarak (notifyCustomer belirtilmeden) müşteriye WhatsApp gider', async () => {
+    const created = await createWithPhone('09:00', '+905551110001');
+    fake.clear();
+
+    const res = await request(app)
+      .post(`${BASE}/${created.body.appointment.id}/cancel`)
+      .set(auth(adminToken))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(fake.messages).toHaveLength(1);
+    expect(fake.messages[0]!.to).toBe('+905551110001');
+  });
+
+  it('notifyCustomer: false ile iptalde mesaj gitmez', async () => {
+    const created = await createWithPhone('10:30', '+905551110002');
+    fake.clear();
+
+    const res = await request(app)
+      .post(`${BASE}/${created.body.appointment.id}/cancel`)
+      .set(auth(adminToken))
+      .send({ notifyCustomer: false });
+
+    expect(res.status).toBe(200);
+    expect(fake.messages).toHaveLength(0);
+  });
+
+  it('walk-in oluştururken notifyCustomer: true ile onay mesajı gider', async () => {
+    fake.clear();
+
+    const res = await request(app).post(BASE).set(auth(adminToken)).send({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: slotAt('12:00'),
+      customerName: 'Bildirim Testi 2',
+      customerPhone: '+905551110003',
+      notifyCustomer: true,
+    });
+
+    expect(res.status).toBe(201);
+    expect(fake.messages).toHaveLength(1);
+    expect(fake.messages[0]!.to).toBe('+905551110003');
+  });
+
+  it('walk-in oluştururken notifyCustomer belirtilmezse (varsayılan false) mesaj gitmez', async () => {
+    fake.clear();
+    const res = await createWithPhone('13:30', '+905551110004');
+    expect(res.status).toBe(201);
+    expect(fake.messages).toHaveLength(0);
+  });
+});
+
+describe('Servis katmanında yetki kontrolü (route\'tan bağımsız)', () => {
+  it('cancelAppointment servis fonksiyonu, auth context uyuşmazsa route çağrılmadan da reddeder', async () => {
+    const created = await createWalkIn(adminToken, fx.adminId, '15:00');
+
+    // staff (Fırat), admin'in (Müslüm) randevusunu servis fonksiyonunu
+    // DOĞRUDAN çağırarak (route/middleware'i tamamen atlayarak) iptal etmeye
+    // çalışıyor. Route katmanı burada devrede değil — bu, savunmanın
+    // gerçekten servis katmanında da var olduğunun kanıtı.
+    await expect(
+      cancelAppointment(
+        fx.shopId,
+        created.body.appointment.id,
+        'barber',
+        undefined,
+        fx.staffId,
+        false,
+        { barberId: fx.staffId, shopId: fx.shopId, role: BARBER_ROLE.STAFF },
+      ),
+    ).rejects.toThrow('Yalnızca kendi randevularınıza erişebilirsiniz');
+
+    const stillActive = await testPrisma.appointment.findUnique({
+      where: { id: created.body.appointment.id },
+    });
+    expect(stillActive?.status).toBe('confirmed');
   });
 });

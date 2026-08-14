@@ -1,11 +1,12 @@
-import { APPOINTMENT_STATUS, DAY_NAMES_TR, MONTH_NAMES_TR, maskPhone } from '@berber/shared';
+import { APPOINTMENT_STATUS, maskPhone } from '@berber/shared';
 import { prisma } from '../../db/client.js';
 import { logger } from '../../lib/logger.js';
 import type { InboundMessage } from '../whatsapp/payload.js';
 import { replyToCustomer, touchInbound } from '../whatsapp/messaging.js';
 import type { ReplyButton, ListRow } from '../whatsapp/client.js';
 import { getAvailableSlots, createAppointment, cancelAppointment } from '../appointments.js';
-import { getZonedParts, formatLocalTime, parseDateString } from '../../lib/time.js';
+import { getZonedParts, formatLocalTime, parseDateString, formatDateTr } from '../../lib/time.js';
+import { shouldSilence } from './spam-guard.js';
 import {
   CHAT_STATE,
   ACTION,
@@ -85,6 +86,14 @@ export async function handleInboundMessage(
   }
 
   const customer = await findOrCreateCustomer(shop.id, message);
+
+  // ── Spam koruması (bkz. spam-guard.ts eşik gerekçesi) ─
+  // Opt-out'tan bile önce kontrol edilir — sel gibi gelen mesajlar hiçbir
+  // DB yazması/WhatsApp isteği tetiklemeden burada durur.
+  if (await shouldSilence(customer.id)) {
+    logger.warn({ phone: maskPhone(message.from) }, 'Spam koruması: mesaj sessizce atlandı');
+    return;
+  }
 
   // ── Opt-out: "DUR" diyene hiçbir şey gönderilmez ─────
   if (matchesCommand(message.text, GLOBAL_COMMANDS.OPT_OUT)) {
@@ -408,12 +417,6 @@ async function handleSelectBarber(args: DispatchArgs): Promise<void> {
     ...args,
     context: { ...context, barberId: barber.id, barberName: barber.name },
   });
-}
-
-function formatDateTr(date: string, timezone: string): string {
-  const { year, month, day } = parseDateString(date);
-  const dayOfWeek = getZonedParts(new Date(Date.UTC(year, month - 1, day, 12)), timezone).dayOfWeek;
-  return `${DAY_NAMES_TR[dayOfWeek]}, ${day} ${MONTH_NAMES_TR[month - 1]}`;
 }
 
 function localDateString(offsetDays: number, timezone: string): string {

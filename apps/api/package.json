@@ -16,7 +16,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
     "db:studio": "prisma studio",
-    "whatsapp:templates": "tsx src/scripts/print-templates.ts"
+    "whatsapp:templates": "tsx src/scripts/print-templates.ts",
+    "reset-password": "tsx --env-file=.env src/scripts/reset-password.ts"
   },
   "prisma": {
     "seed": "tsx --env-file=.env prisma/seed.ts"

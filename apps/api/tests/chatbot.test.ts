@@ -500,3 +500,30 @@ describe('Oturum yönetimi', () => {
     await testPrisma.customer.deleteMany({ where: { shopId: fx.shopId, phone: other } });
   });
 });
+
+describe('Spam koruması', () => {
+  it('1 dakikada eşiği aşan mesajlar sessizce atlanır ve 5 dakikalık susma başlar', async () => {
+    const spammer = '+905557778899';
+
+    // Eşiğin (20) altında kalan mesajlar normal işlenmeye devam etmeli
+    for (let i = 0; i < 20; i++) {
+      await send('merhaba', spammer);
+    }
+
+    // 21. mesaj eşiği aşıyor — bot hiçbir şey söylememeli
+    const replies = await send('merhaba', spammer);
+    expect(replies).toHaveLength(0);
+
+    const customer = await testPrisma.customer.findFirst({
+      where: { shopId: fx.shopId, phone: spammer },
+    });
+    expect(customer?.silencedUntil).toBeTruthy();
+    expect(customer!.silencedUntil!.getTime()).toBeGreaterThan(Date.now());
+
+    // Susma sürerken gelen bir mesaj da sessizce atlanmalı
+    const stillSilent = await send('MENÜ', spammer);
+    expect(stillSilent).toHaveLength(0);
+
+    await testPrisma.customer.deleteMany({ where: { shopId: fx.shopId, phone: spammer } });
+  });
+});
