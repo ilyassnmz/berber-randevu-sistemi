@@ -329,11 +329,19 @@
   white-space: nowrap;
 }
 
-.status-badge[data-status='pending_confirm'] { background: rgba(226,185,59,.15); color: var(--status-pending); }
-.status-badge[data-status='confirmed'] { background: rgba(76,139,245,.15); color: var(--status-confirmed); }
-.status-badge[data-status='cancelled'] { background: rgba(224,90,90,.15); color: var(--status-cancelled); }
-.status-badge[data-status='completed'] { background: rgba(76,175,125,.15); color: var(--status-completed); }
-.status-badge[data-status='no_show'] { background: rgba(122,122,140,.2); color: var(--status-noshow); }
+.status-badge[data-status='pending_confirm'] { background: rgba(146,102,10,.14); color: var(--status-pending); }
+.status-badge[data-status='confirmed'] { background: rgba(37,99,235,.12); color: var(--status-confirmed); }
+.status-badge[data-status='cancelled'] { background: rgba(220,38,38,.12); color: var(--status-cancelled); }
+.status-badge[data-status='completed'] { background: rgba(21,128,61,.12); color: var(--status-completed); }
+.status-badge[data-status='no_show'] { background: rgba(87,83,78,.14); color: var(--status-noshow); }
+
+/* Koyu temada aynı rozetler daha açık/canlı tonlarla — açık temadaki koyu
+   metin renkleri koyu zeminde okunmaz hale gelirdi. */
+:root[data-theme='dark'] .status-badge[data-status='pending_confirm'] { background: rgba(226,185,59,.15); }
+:root[data-theme='dark'] .status-badge[data-status='confirmed'] { background: rgba(76,139,245,.15); }
+:root[data-theme='dark'] .status-badge[data-status='cancelled'] { background: rgba(224,90,90,.15); }
+:root[data-theme='dark'] .status-badge[data-status='completed'] { background: rgba(76,175,125,.15); }
+:root[data-theme='dark'] .status-badge[data-status='no_show'] { background: rgba(122,122,140,.2); }
 
 /* ── Boş / hata / yükleniyor ─────────────────────────── */
 

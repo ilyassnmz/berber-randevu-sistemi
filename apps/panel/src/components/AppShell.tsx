@@ -2,12 +2,14 @@ import { Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuthStore } from '../lib/authStore';
 import { logout as logoutRequest } from '../lib/endpoints';
+import { getStoredTheme, toggleTheme, type Theme } from '../lib/theme';
 
 /** Üst çubuk + içerik alanı. Tüm korumalı sayfalar bunun içinde render edilir. */
 export function AppShell() {
   const barber = useAuthStore((s) => s.barber);
   const clearSession = useAuthStore((s) => s.clearSession);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [theme, setTheme] = useState<Theme>(getStoredTheme);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -20,6 +22,10 @@ export function AppShell() {
     }
   }
 
+  function handleToggleTheme() {
+    setTheme(toggleTheme());
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -29,6 +35,14 @@ export function AppShell() {
         </div>
         <div className="app-header-user">
           <span>{barber?.name}</span>
+          <button
+            className="btn-icon"
+            onClick={handleToggleTheme}
+            aria-label={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+            title={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button
             className="btn-icon"
             onClick={handleLogout}
