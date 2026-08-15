@@ -123,8 +123,11 @@
 }
 
 .btn-icon {
-  background: transparent;
-  border: none;
+  /* Öncesinde sadece :active'de arka plan çıkıyordu — sabit durumda hiçbir
+     çerçeve/arka plan olmayınca "tıklanabilir bir buton" değil de düz bir
+     simge gibi görünüyordu. Şimdi her zaman görünür bir sınırı var. */
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   color: var(--text);
   font-size: 18px;
   width: var(--tap-min);
@@ -132,10 +135,18 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
+  transition:
+    background-color 0.1s,
+    border-color 0.1s;
+}
+
+.btn-icon:hover {
+  border-color: var(--accent);
 }
 
 .btn-icon:active {
-  background: var(--surface-raised);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ── Uygulama kabuğu ─────────────────────────────────── */
@@ -511,12 +522,17 @@
 .day-toggle {
   width: 44px;
   height: 26px;
+  /* Genel `button { min-height: var(--tap-min) }` (44px) kuralı olmasa bu
+     gerekmezdi — burada override edilmezse anahtar 44x26 pil yerine 44x44
+     bir DAİREYE dönüşüyordu (yüksekliği min-height'a zorlanıyordu). */
+  min-height: 0;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface-raised);
   position: relative;
   flex-shrink: 0;
   padding: 0;
+  cursor: pointer;
 }
 
 .day-toggle[data-on='true'] {
