@@ -71,3 +71,16 @@ export function formatTimeTr(iso: string): string {
 export function isToday(date: string): boolean {
   return date === todayLocalDate();
 }
+
+/**
+ * Bir yerel günün tamamını (00:00-23:59:59) UTC ISO aralığına çevirir.
+ * Türkiye kalıcı UTC+3 (2016'dan beri yaz saati yok) — bu yüzden sabit
+ * "+03:00" ofseti güvenli, `apps/api/src/lib/time.ts`'teki aynı varsayımla
+ * tutarlı.
+ */
+export function localDayRangeIso(date: string): { startsAt: string; endsAt: string } {
+  return {
+    startsAt: `${date}T00:00:00+03:00`,
+    endsAt: `${date}T23:59:59+03:00`,
+  };
+}

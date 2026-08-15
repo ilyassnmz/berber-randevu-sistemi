@@ -434,3 +434,139 @@
   color: var(--accent);
   text-decoration: none;
 }
+
+/* ── Ayarlar sayfası ─────────────────────────────────── */
+
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  padding: 8px 0;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.settings-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-section h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.settings-section-hint {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+.barber-picker {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.day-row {
+  display: grid;
+  grid-template-columns: 84px 1fr 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.day-row:last-of-type {
+  border-bottom: none;
+}
+
+.day-row-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.day-row input[type='time'] {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  color: var(--text);
+  font-size: 14px;
+  min-height: 40px;
+  width: 100%;
+}
+
+.day-row input[type='time']:disabled {
+  opacity: 0.4;
+}
+
+.day-toggle {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.day-toggle[data-on='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.day-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+  transition: transform 0.15s;
+}
+
+.day-toggle[data-on='true']::after {
+  transform: translateX(18px);
+  background: var(--accent-text);
+}
+
+.time-off-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.time-off-item:last-of-type {
+  border-bottom: none;
+}
+
+.time-off-item-info {
+  min-width: 0;
+}
+
+.time-off-item-date {
+  font-weight: 600;
+}
+
+.time-off-item-reason {
+  color: var(--text-dim);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

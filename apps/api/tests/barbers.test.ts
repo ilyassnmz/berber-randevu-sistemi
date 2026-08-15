@@ -1,0 +1,206 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../src/app.js';
+import { createFixture, destroyFixture, testPrisma, type TestFixture } from './helpers.js';
+
+/**
+ * Berber yönetimi: çalışma saatleri, izin günleri, yeni berber ekleme.
+ *
+ * `working_hours`/`time_off` tabloları vardı ama hiçbir route bunları
+ * yazmıyordu — bu dosya o boşluğu kapatan uçları doğruluyor.
+ */
+
+const app = createApp();
+const BASE = '/api/v1/barbers';
+
+let fx: TestFixture;
+let adminToken: string;
+let staffToken: string;
+
+function auth(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
+function fullWeek(overrides: Partial<{ startTime: string; endTime: string }> = {}) {
+  return Array.from({ length: 7 }, (_, dayOfWeek) => ({
+    dayOfWeek,
+    startTime: overrides.startTime ?? '09:00',
+    endTime: overrides.endTime ?? '20:15',
+    isWorking: dayOfWeek !== 0,
+  }));
+}
+
+beforeAll(async () => {
+  fx = await createFixture();
+
+  const adminRes = await request(app)
+    .post('/api/v1/auth/login')
+    .send({ email: fx.adminEmail, password: fx.password });
+  adminToken = adminRes.body.accessToken as string;
+
+  const staffRes = await request(app)
+    .post('/api/v1/auth/login')
+    .send({ email: fx.staffEmail, password: fx.password });
+  staffToken = staffRes.body.accessToken as string;
+});
+
+afterAll(async () => {
+  await destroyFixture(fx.shopId);
+  await testPrisma.$disconnect();
+});
+
+describe('Çalışma saatleri', () => {
+  it('staff kendi saatlerini görüntüleyip güncelleyebilir', async () => {
+    const put = await request(app)
+      .put(`${BASE}/${fx.staffId}/working-hours`)
+      .set(auth(staffToken))
+      .send(fullWeek({ startTime: '10:00', endTime: '18:00' }));
+
+    expect(put.status).toBe(200);
+    expect(put.body.workingHours).toHaveLength(7);
+    expect(put.body.workingHours[1].startTime).toBe('10:00');
+
+    const get = await request(app).get(`${BASE}/${fx.staffId}/working-hours`).set(auth(staffToken));
+    expect(get.status).toBe(200);
+    expect(get.body.workingHours[1].startTime).toBe('10:00');
+  });
+
+  it('staff başka berberin saatlerini değiştiremez', async () => {
+    const res = await request(app)
+      .put(`${BASE}/${fx.adminId}/working-hours`)
+      .set(auth(staffToken))
+      .send(fullWeek());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('admin herkesin saatlerini değiştirebilir', async () => {
+    const res = await request(app)
+      .put(`${BASE}/${fx.staffId}/working-hours`)
+      .set(auth(adminToken))
+      .send(fullWeek({ startTime: '09:00', endTime: '20:15' }));
+
+    expect(res.status).toBe(200);
+    expect(res.body.workingHours[1].startTime).toBe('09:00');
+  });
+
+  it('7 günden eksik gönderilirse reddeder', async () => {
+    const res = await request(app)
+      .put(`${BASE}/${fx.staffId}/working-hours`)
+      .set(auth(staffToken))
+      .send(fullWeek().slice(0, 6));
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('İzin günleri', () => {
+  it('staff kendi izin gününü ekleyip listeleyip silebilir', async () => {
+    const tomorrow = new Date(Date.now() + 24 * 3600_000);
+    const dayAfter = new Date(Date.now() + 48 * 3600_000);
+
+    const created = await request(app)
+      .post(`${BASE}/${fx.staffId}/time-off`)
+      .set(auth(staffToken))
+      .send({ startsAt: tomorrow.toISOString(), endsAt: dayAfter.toISOString(), reason: 'İzin' });
+
+    expect(created.status).toBe(201);
+    expect(created.body.timeOff.barberId).toBe(fx.staffId);
+
+    const list = await request(app).get(`${BASE}/${fx.staffId}/time-off`).set(auth(staffToken));
+    expect(list.body.timeOff.some((t: { id: string }) => t.id === created.body.timeOff.id)).toBe(
+      true,
+    );
+
+    const del = await request(app)
+      .delete(`${BASE}/time-off/${created.body.timeOff.id}`)
+      .set(auth(staffToken));
+    expect(del.status).toBe(204);
+
+    const listAfter = await request(app).get(`${BASE}/${fx.staffId}/time-off`).set(auth(staffToken));
+    expect(listAfter.body.timeOff.some((t: { id: string }) => t.id === created.body.timeOff.id)).toBe(
+      false,
+    );
+  });
+
+  it('staff başkasının izin gününü ekleyemez', async () => {
+    const tomorrow = new Date(Date.now() + 24 * 3600_000);
+    const dayAfter = new Date(Date.now() + 48 * 3600_000);
+
+    const res = await request(app)
+      .post(`${BASE}/${fx.adminId}/time-off`)
+      .set(auth(staffToken))
+      .send({ startsAt: tomorrow.toISOString(), endsAt: dayAfter.toISOString(), reason: 'İzin' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('izinli günde slot listelenmez (uçtan uca doğrulama)', async () => {
+    // Pazar hariç herhangi bir gün — Pazar zaten kapalı, izin testini anlamsız kılar.
+    let target = new Date(Date.now() + 24 * 3600_000);
+    while (target.getUTCDay() === 0) target = new Date(target.getTime() + 24 * 3600_000);
+    const targetDate = target.toISOString().slice(0, 10);
+    const dayStart = new Date(`${targetDate}T00:00:00+03:00`);
+    const dayEnd = new Date(`${targetDate}T23:59:59+03:00`);
+
+    await request(app)
+      .post(`${BASE}/${fx.staffId}/time-off`)
+      .set(auth(staffToken))
+      .send({ startsAt: dayStart.toISOString(), endsAt: dayEnd.toISOString(), reason: 'Tam gün izin' });
+
+    const service = await testPrisma.service.findFirstOrThrow({ where: { shopId: fx.shopId } });
+    const slots = await request(app)
+      .get('/api/v1/appointments/slots')
+      .set(auth(staffToken))
+      .query({ barberId: fx.staffId, serviceId: service.id, date: targetDate });
+
+    expect(slots.body.slots).toHaveLength(0);
+  });
+});
+
+describe('POST /barbers — yeni berber ekleme', () => {
+  it('admin yeni berber ekleyebilir, şifre bir kez döner, varsayılan program oluşur', async () => {
+    const email = `yeni-${Date.now()}@test.local`;
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({ name: 'Yeni Berber', email, role: 'staff' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.barber.email).toBe(email);
+    expect(typeof res.body.password).toBe('string');
+    expect(res.body.password.length).toBeGreaterThan(10);
+
+    const hours = await testPrisma.workingHours.findMany({ where: { barberId: res.body.barber.id } });
+    expect(hours).toHaveLength(7);
+    expect(hours.find((h) => h.dayOfWeek === 0)?.isWorking).toBe(false);
+    expect(hours.find((h) => h.dayOfWeek === 1)?.isWorking).toBe(true);
+
+    // Gerçekten giriş yapılabiliyor mu?
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email, password: res.body.password });
+    expect(login.status).toBe(200);
+
+    await testPrisma.workingHours.deleteMany({ where: { barberId: res.body.barber.id } });
+    await testPrisma.barber.delete({ where: { id: res.body.barber.id } });
+  });
+
+  it('staff yeni berber ekleyemez', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(staffToken))
+      .send({ name: 'Yeni Berber 2', email: `yeni2-${Date.now()}@test.local`, role: 'staff' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('aynı e-posta ile ikinci berber eklenemez', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({ name: 'Tekrar', email: fx.staffEmail, role: 'staff' });
+
+    expect(res.status).toBe(400);
+  });
+});

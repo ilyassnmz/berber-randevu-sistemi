@@ -1,5 +1,15 @@
 import { apiRequest } from './api';
-import type { Appointment, AuthBarber, Barber, Service, Slot, AppointmentStatus } from './types';
+import type {
+  Appointment,
+  AuthBarber,
+  Barber,
+  Service,
+  Slot,
+  AppointmentStatus,
+  WorkingHoursDay,
+  TimeOff,
+  BarberRole,
+} from './types';
 
 // ─── Auth ───────────────────────────────────────────────
 
@@ -83,6 +93,44 @@ export function rescheduleAppointment(id: string, startsAt: string) {
   return apiRequest<{ appointment: Appointment }>(`/appointments/${id}/reschedule`, {
     method: 'POST',
     body: { startsAt },
+  });
+}
+
+// ─── Berber yönetimi ─────────────────────────────────────
+
+export function fetchWorkingHours(barberId: string) {
+  return apiRequest<{ workingHours: WorkingHoursDay[] }>(`/barbers/${barberId}/working-hours`);
+}
+
+export function updateWorkingHours(barberId: string, days: WorkingHoursDay[]) {
+  return apiRequest<{ workingHours: WorkingHoursDay[] }>(`/barbers/${barberId}/working-hours`, {
+    method: 'PUT',
+    body: days,
+  });
+}
+
+export function fetchTimeOff(barberId: string) {
+  return apiRequest<{ timeOff: TimeOff[] }>(`/barbers/${barberId}/time-off`);
+}
+
+export function createTimeOff(
+  barberId: string,
+  input: { startsAt: string; endsAt: string; reason: string },
+) {
+  return apiRequest<{ timeOff: TimeOff }>(`/barbers/${barberId}/time-off`, {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function deleteTimeOff(timeOffId: string) {
+  return apiRequest<void>(`/barbers/time-off/${timeOffId}`, { method: 'DELETE' });
+}
+
+export function createBarber(input: { name: string; email: string; role: BarberRole }) {
+  return apiRequest<{ barber: Barber & { email: string }; password: string }>('/barbers', {
+    method: 'POST',
+    body: input,
   });
 }
 

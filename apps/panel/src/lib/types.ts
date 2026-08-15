@@ -65,6 +65,21 @@ export interface Slot {
   label: string;
 }
 
+export interface WorkingHoursDay {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isWorking: boolean;
+}
+
+export interface TimeOff {
+  id: string;
+  barberId: string | null;
+  startsAt: string;
+  endsAt: string;
+  reason: string;
+}
+
 export const STATUS_LABELS_TR: Record<AppointmentStatus, string> = {
   pending_confirm: 'Onay bekliyor',
   confirmed: 'Onaylandı',

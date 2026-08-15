@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuthStore } from '../lib/authStore';
 import { logout as logoutRequest } from '../lib/endpoints';
@@ -35,6 +35,9 @@ export function AppShell() {
         </div>
         <div className="app-header-user">
           <span>{barber?.name}</span>
+          <Link className="btn-icon" to="/ayarlar" aria-label="Ayarlar" title="Ayarlar">
+            ⚙️
+          </Link>
           <button
             className="btn-icon"
             onClick={handleToggleTheme}

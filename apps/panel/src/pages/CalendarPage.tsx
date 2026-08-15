@@ -62,7 +62,16 @@ export default function CalendarPage() {
   });
 
   const timeline = useMemo<TimelineEntry[]>(() => {
-    const appointments = appointmentsQuery.data?.items ?? [];
+    // İptal edilen randevular saati BLOKE ETMİYOR (backend zaten o saati boş
+    // slot olarak dönüyor) — ama günün akışına dahil edilirse aynı saatte
+    // hem "iptal edilmiş X" kartı hem "boş — ekle" kartı yan yana görünüp
+    // o saat doluymuş izlenimi veriyordu. Berberin en sık kullandığı görünüm
+    // (günün akışı) temiz kalsın diye burada gizleniyor; iptal geçmişi hâlâ
+    // randevu detayında (cancelReason) ve ileride eklenecek bir geçmiş
+    // ekranında görülebilir.
+    const appointments = (appointmentsQuery.data?.items ?? []).filter(
+      (a) => a.status !== 'cancelled',
+    );
     const slots = slotsQuery.data?.slots ?? [];
 
     const entries: TimelineEntry[] = [

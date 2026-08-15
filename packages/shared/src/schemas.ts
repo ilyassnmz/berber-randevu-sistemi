@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { normalizePhone } from './phone.js';
-import { APPOINTMENT_STATUS, CANCELLED_BY } from './constants.js';
+import { APPOINTMENT_STATUS, CANCELLED_BY, BARBER_ROLE } from './constants.js';
 
 /**
  * API giriş şemaları. Backend doğrulama için, frontend form doğrulaması için
@@ -169,6 +169,15 @@ export const createTimeOffSchema = z
     path: ['endsAt'],
   });
 export type CreateTimeOffInput = z.infer<typeof createTimeOffSchema>;
+
+// ─── Berber ─────────────────────────────────────────────
+
+export const createBarberSchema = z.object({
+  name: z.string().trim().min(1, 'Ad gerekli').max(120),
+  email: z.string().trim().toLowerCase().email('Geçerli bir e-posta giriniz'),
+  role: z.nativeEnum(BARBER_ROLE).default(BARBER_ROLE.STAFF),
+});
+export type CreateBarberInput = z.infer<typeof createBarberSchema>;
 
 // ─── Hizmet ─────────────────────────────────────────────
 
