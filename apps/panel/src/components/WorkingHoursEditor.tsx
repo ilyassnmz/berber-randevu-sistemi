@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check } from 'lucide-react';
 import { fetchWorkingHours, updateWorkingHours } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
 import type { WorkingHoursDay } from '../lib/types';
@@ -105,7 +106,7 @@ export function WorkingHoursEditor({ barberId }: Props) {
         onClick={handleSave}
         disabled={mutation.isPending}
       >
-        {mutation.isPending ? <span className="spinner" /> : saved ? '✅ Kaydedildi' : 'Kaydet'}
+        {mutation.isPending ? <span className="spinner" /> : saved ? (<><Check size={16} aria-hidden /> Kaydedildi</>) : ('Kaydet')}
       </button>
     </div>
   );

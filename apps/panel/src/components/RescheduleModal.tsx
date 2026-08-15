@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from '../lib/types';
 import { fetchSlots, rescheduleAppointment } from '../lib/endpoints';
@@ -49,7 +50,7 @@ export function RescheduleModal({ appointment, onClose, onRescheduled }: Props) 
         <div className="modal-header">
           <h2>Saati Değiştir</h2>
           <button className="btn-icon" onClick={onClose} aria-label="Kapat">
-            ✕
+            <X size={18} aria-hidden />
           </button>
         </div>
 
@@ -59,7 +60,7 @@ export function RescheduleModal({ appointment, onClose, onRescheduled }: Props) 
             onClick={() => setDate(addDaysToDate(date, -1))}
             aria-label="Önceki gün"
           >
-            ‹
+            <ChevronLeft size={20} aria-hidden />
           </button>
           <div className="date-nav-label">{formatDateTr(date)}</div>
           <button
@@ -67,7 +68,7 @@ export function RescheduleModal({ appointment, onClose, onRescheduled }: Props) 
             onClick={() => setDate(addDaysToDate(date, 1))}
             aria-label="Sonraki gün"
           >
-            ›
+            <ChevronRight size={20} aria-hidden />
           </button>
           {!isToday(date) && (
             <button

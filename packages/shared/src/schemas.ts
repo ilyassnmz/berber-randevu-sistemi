@@ -102,6 +102,22 @@ export const listAppointmentsQuerySchema = z.object({
 });
 export type ListAppointmentsQuery = z.infer<typeof listAppointmentsQuerySchema>;
 
+// ─── İstatistik ─────────────────────────────────────────
+
+export const statsQuerySchema = z
+  .object({
+    from: localDateSchema,
+    /** Bu gün DAHİL. */
+    to: localDateSchema,
+    /** Yalnızca admin için anlamlı; staff her zaman kendi verisini görür. */
+    barberId: uuidSchema.optional(),
+  })
+  .refine((d) => d.from <= d.to, {
+    message: 'Başlangıç tarihi bitişten sonra olamaz',
+    path: ['to'],
+  });
+export type StatsQuery = z.infer<typeof statsQuerySchema>;
+
 // ─── Müşteri ────────────────────────────────────────────
 
 export const blacklistCustomerSchema = z.object({

@@ -2,6 +2,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { registerSW } from 'virtual:pwa-register';
+// Yazı tipi uygulamayla birlikte paketleniyor (CDN'den ÇEKİLMİYOR): panel
+// çevrimdışı da açılabilmeli ve dükkanın interneti yavaşken yazı tipi
+// beklerken metin görünmez kalmamalı.
+import '@fontsource-variable/inter';
 import App from './App';
 import './styles/theme.css';
 import './styles/layout.css';

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchTimeOff, createTimeOff, deleteTimeOff } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
@@ -105,7 +106,7 @@ export function TimeOffManager({ barberId }: Props) {
               onClick={() => deleteMutation.mutate(t.id)}
               disabled={deleteMutation.isPending}
             >
-              🗑️
+              <Trash2 size={16} aria-hidden />
             </button>
           </div>
         ))}

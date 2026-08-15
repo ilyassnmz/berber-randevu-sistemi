@@ -14,6 +14,7 @@ import { appointmentsRouter } from './routes/appointments.js';
 import { barbersRouter } from './routes/barbers.js';
 import { servicesRouter } from './routes/services.js';
 import { customersRouter } from './routes/customers.js';
+import { statsRouter } from './routes/stats.js';
 import { webhookRouter } from './routes/webhook.js';
 import { legalRouter } from './routes/legal.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
@@ -112,6 +113,7 @@ export function createApp(): Express {
   app.use('/api/v1/barbers', barbersRouter);
   app.use('/api/v1/services', servicesRouter);
   app.use('/api/v1/customers', customersRouter);
+  app.use('/api/v1/stats', statsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

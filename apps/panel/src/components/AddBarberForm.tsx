@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle } from 'lucide-react';
 import { createBarber } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
 import type { BarberRole } from '../lib/types';
@@ -46,7 +47,7 @@ export function AddBarberForm() {
     return (
       <div>
         <div className="form-error" role="alert" style={{ background: 'var(--danger-bg)', marginBottom: 12 }}>
-          ⚠️ Bu şifre bir daha gösterilmeyecek — hemen bir parola yöneticisine kaydedin.
+          <AlertTriangle size={15} aria-hidden /> Bu şifre bir daha gösterilmeyecek — hemen bir parola yöneticisine kaydedin.
         </div>
         <div className="detail-row">
           <span>Ad</span>

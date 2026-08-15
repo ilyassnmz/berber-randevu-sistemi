@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { ChevronLeft, KeyRound } from 'lucide-react';
 import { useAuthStore } from '../lib/authStore';
 import { fetchBarbers } from '../lib/endpoints';
 import { WorkingHoursEditor } from '../components/WorkingHoursEditor';
 import { TimeOffManager } from '../components/TimeOffManager';
 import { AddBarberForm } from '../components/AddBarberForm';
+import { ServicesEditor } from '../components/ServicesEditor';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
 
 export default function SettingsPage() {
@@ -26,14 +28,14 @@ export default function SettingsPage() {
   return (
     <div>
       <Link to="/" className="settings-back">
-        ‹ Takvime dön
+        <ChevronLeft size={16} aria-hidden /> Takvime dön
       </Link>
 
       <div className="settings-section">
         <h2>Hesap</h2>
         <p className="settings-section-hint">{barber?.name} · {barber?.email}</p>
         <button type="button" className="btn btn-secondary btn-block" onClick={() => setShowChangePassword(true)}>
-          🔒 Şifre Değiştir
+          <KeyRound size={16} aria-hidden /> Şifre Değiştir
         </button>
       </div>
 
@@ -71,6 +73,17 @@ export default function SettingsPage() {
         </p>
         {activeScheduleBarberId && <TimeOffManager key={activeScheduleBarberId} barberId={activeScheduleBarberId} />}
       </div>
+
+      {isAdmin && (
+        <div className="settings-section">
+          <h2>Hizmetler</h2>
+          <p className="settings-section-hint">
+            Süre ve fiyat. Süre değişikliği yalnızca yeni randevuları etkiler —
+            mevcut randevular oldukları gibi kalır.
+          </p>
+          <ServicesEditor />
+        </div>
+      )}
 
       {isAdmin && (
         <div className="settings-section">

@@ -53,7 +53,7 @@ export interface Appointment {
   source: AppointmentSource;
   createdAt: string;
   customer: Customer;
-  service: { id: string; name: string; durationMin: number };
+  service: { id: string; name: string; durationMin: number; price?: string | null };
   barber: { id: string; name: string };
   localStartTime?: string;
   localEndTime?: string;
@@ -78,6 +78,34 @@ export interface TimeOff {
   startsAt: string;
   endsAt: string;
   reason: string;
+}
+
+/** Müşteri listesi satırı — `GET /customers` yanıtı. */
+export interface CustomerListItem extends Customer {
+  blacklistNote: string | null;
+  createdAt: string;
+}
+
+/** `GET /stats` yanıtı. */
+export interface Stats {
+  range: { from: string; to: string };
+  total: number;
+  uniqueCustomers: number;
+  byStatus: Record<AppointmentStatus, number>;
+  bySource: { whatsapp: number; panel: number };
+  byBarber: Array<{ barberId: string; name: string; count: number }>;
+}
+
+/** Müşteri detayı — `GET /customers/:id`, randevu geçmişiyle. */
+export interface CustomerDetail extends CustomerListItem {
+  appointments: Array<{
+    id: string;
+    startsAt: string;
+    endsAt: string;
+    status: AppointmentStatus;
+    service: { id: string; name: string };
+    barber: { id: string; name: string };
+  }>;
 }
 
 export const STATUS_LABELS_TR: Record<AppointmentStatus, string> = {

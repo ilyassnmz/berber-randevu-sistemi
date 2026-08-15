@@ -9,6 +9,9 @@ import type {
   WorkingHoursDay,
   TimeOff,
   BarberRole,
+  CustomerListItem,
+  CustomerDetail,
+  Stats,
 } from './types';
 
 // ─── Auth ───────────────────────────────────────────────
@@ -39,6 +42,13 @@ export function fetchBarbers() {
 
 export function fetchServices() {
   return apiRequest<{ services: Service[] }>('/services');
+}
+
+export function updateService(
+  id: string,
+  input: { name: string; durationMin: number; price: number | null; isActive?: boolean },
+) {
+  return apiRequest<{ service: Service }>(`/services/${id}`, { method: 'PUT', body: input });
 }
 
 // ─── Randevular ─────────────────────────────────────────
@@ -141,4 +151,29 @@ export function blacklistCustomer(customerId: string, reason: string) {
     method: 'PUT',
     body: { reason },
   });
+}
+
+export function unblacklistCustomer(customerId: string) {
+  return apiRequest<{ customer: unknown }>(`/customers/${customerId}/blacklist`, {
+    method: 'DELETE',
+  });
+}
+
+export function fetchCustomers(params: {
+  search?: string;
+  blacklistedOnly?: boolean;
+  cursor?: string;
+  limit?: number;
+}) {
+  return apiRequest<{ items: CustomerListItem[]; nextCursor: string | null }>('/customers', {
+    query: params,
+  });
+}
+
+export function fetchStats(params: { from: string; to: string; barberId?: string }) {
+  return apiRequest<Stats>('/stats', { query: params });
+}
+
+export function fetchCustomer(customerId: string) {
+  return apiRequest<{ customer: CustomerDetail }>(`/customers/${customerId}`);
 }

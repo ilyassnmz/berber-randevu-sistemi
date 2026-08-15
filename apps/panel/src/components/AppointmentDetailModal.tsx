@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { X, CheckCheck, UserX, Clock } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from '../lib/types';
-import { formatDateTr, formatTimeTr } from '../lib/dates';
+import { formatDateTr, formatTimeTr, formatPrice } from '../lib/dates';
 import { StatusBadge } from './StatusBadge';
 import { RescheduleModal } from './RescheduleModal';
 import {
@@ -84,7 +85,7 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
         <div className="modal-header">
           <h2>Randevu Detayı</h2>
           <button className="btn-icon" onClick={onClose} aria-label="Kapat">
-            ✕
+            <X size={18} aria-hidden />
           </button>
         </div>
 
@@ -107,7 +108,12 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
           </div>
           <div className="detail-row">
             <span>Hizmet</span>
-            <span>{appointment.service.name}</span>
+            <span>
+              {appointment.service.name}
+              {formatPrice(appointment.service.price) && (
+                <strong> · {formatPrice(appointment.service.price)}</strong>
+              )}
+            </span>
           </div>
           <div className="detail-row">
             <span>Tarih / Saat</span>
@@ -147,14 +153,14 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
                 onClick={() => completeMutation.mutate()}
                 disabled={anyPending}
               >
-                ✅ Tamamlandı
+                <CheckCheck size={16} aria-hidden /> Tamamlandı
               </button>
               <button
                 className="btn btn-secondary"
                 onClick={() => noShowMutation.mutate()}
                 disabled={anyPending}
               >
-                🚫 Gelmedi
+                <UserX size={16} aria-hidden /> Gelmedi
               </button>
             </div>
 
@@ -164,7 +170,7 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
                 onClick={() => setShowReschedule(true)}
                 disabled={anyPending}
               >
-                🕘 Saati Değiştir
+                <Clock size={16} aria-hidden /> Saati Değiştir
               </button>
             )}
 

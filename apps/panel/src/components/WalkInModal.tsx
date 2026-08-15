@@ -1,10 +1,11 @@
 import { useState, type FormEvent, type FocusEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { X } from 'lucide-react';
 import { isValidPhone } from '@berber/shared';
 import type { Service } from '../lib/types';
 import { createAppointment } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
-import { formatDateTr, formatTimeTr } from '../lib/dates';
+import { formatDateTr, formatTimeTr, formatPrice } from '../lib/dates';
 
 interface Props {
   barberId: string;
@@ -80,7 +81,7 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
         <div className="modal-header">
           <h2>Yeni Randevu</h2>
           <button className="btn-icon" onClick={onClose} aria-label="Kapat">
-            ✕
+            <X size={18} aria-hidden />
           </button>
         </div>
 
@@ -116,6 +117,7 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
+                  {formatPrice(s.price) ? ` — ${formatPrice(s.price)}` : ''}
                 </option>
               ))}
             </select>

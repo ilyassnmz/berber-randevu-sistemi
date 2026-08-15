@@ -1,5 +1,6 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { logger } from '../lib/logger.js';
+import { captureError } from '../lib/sentry.js';
 import { sendDayReminders, sendHourReminders } from './reminders.js';
 import { expirePendingAppointments, cleanupExpired } from './cleanup.js';
 
@@ -17,7 +18,12 @@ function runSafely(name: string, fn: () => Promise<'ran' | 'skipped'>): void {
       if (result === 'ran') logger.debug({ job: name }, 'Zamanlanmış iş tamamlandı');
     })
     .catch((error: unknown) => {
+      // Cron işleri istek dışında çalışıyor — hataları error-handler
+      // middleware'ine hiç uğramıyor, bu yüzden Sentry'ye buradan
+      // bildirilmeleri gerekiyor. Sessizce başarısız olan bir hatırlatma
+      // işi, fark edilmesi en zor arıza türü.
       logger.error({ err: error, job: name }, 'Zamanlanmış iş hata verdi');
+      captureError(error, { job: name });
     });
 }
 

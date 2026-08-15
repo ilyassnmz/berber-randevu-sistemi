@@ -4,6 +4,11 @@ import { logger } from './lib/logger.js';
 import { disconnectDatabase } from './db/client.js';
 import { startScheduler, stopScheduler } from './jobs/scheduler.js';
 import { waitForPendingWebhookWork } from './routes/webhook.js';
+import { initSentry, captureError, flushSentry } from './lib/sentry.js';
+
+// Sunucu ayağa kalkmadan ÖNCE: açılış sırasında oluşan bir hata da
+// yakalanabilsin diye ilk iş bu.
+initSentry();
 
 const app = createApp();
 
@@ -61,6 +66,9 @@ async function shutdown(signal: string): Promise<void> {
       // (bkz. routes/webhook.ts) bitmeden veritabanı bağlantısını kapatma —
       // aksi halde bir WhatsApp mesajı işlenirken yarıda kesilir.
       await waitForPendingWebhookWork();
+      // Bekleyen hata raporları gönderilsin — süreç ölünce kaybolurlardı,
+      // ki çökme anındaki rapor tam da en çok ihtiyaç duyulan rapordur.
+      await flushSentry();
       await disconnectDatabase();
       logger.info('Kapanma tamamlandı');
       process.exit(0);
@@ -76,10 +84,12 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 
 process.on('unhandledRejection', (reason) => {
   logger.fatal({ err: reason }, 'Yakalanmamış promise reddi');
+  captureError(reason, { kind: 'unhandledRejection' });
   void shutdown('unhandledRejection');
 });
 
 process.on('uncaughtException', (err) => {
   logger.fatal({ err }, 'Yakalanmamış istisna');
+  captureError(err, { kind: 'uncaughtException' });
   void shutdown('uncaughtException');
 });

@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import type { Appointment } from '../lib/types';
 import { formatTimeTr } from '../lib/dates';
 import { StatusBadge } from './StatusBadge';
@@ -18,7 +19,7 @@ export function AppointmentCard({ appointment, onClick }: Props) {
       </div>
       <div className="appt-body">
         <div className="appt-name">
-          {name} {noShowBadge && '⚠️'}
+          {name}{noShowBadge && <AlertTriangle size={13} aria-hidden className="appt-warn" />}
         </div>
         <div className="appt-meta">
           {appointment.service.name}

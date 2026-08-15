@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { CalendarOff } from 'lucide-react';
 import { useAuthStore } from '../lib/authStore';
 import { fetchAppointments, fetchBarbers, fetchServices, fetchSlots } from '../lib/endpoints';
 import { todayLocalDate } from '../lib/dates';
@@ -117,8 +118,13 @@ export default function CalendarPage() {
         <>
           {timeline.length === 0 && (
             <div className="state-message">
-              Bu tarih için görüntülenecek randevu veya müsait saat yok.
-              {!referenceServiceId && ' (Henüz hizmet tanımlı değil.)'}
+              <CalendarOff size={36} strokeWidth={1.5} aria-hidden />
+              <span className="state-message-title">Bu gün için gösterilecek bir şey yok</span>
+              <span>
+                {referenceServiceId
+                  ? 'Bu tarihte randevu ya da müsait saat bulunmuyor. Kapalı bir gün olabilir — Ayarlar’dan çalışma saatlerini kontrol edebilirsiniz.'
+                  : 'Henüz hizmet tanımlı değil, bu yüzden saat ızgarası oluşturulamıyor.'}
+              </span>
             </div>
           )}
 

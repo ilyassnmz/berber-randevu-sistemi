@@ -84,3 +84,15 @@ export function localDayRangeIso(date: string): { startsAt: string; endsAt: stri
     endsAt: `${date}T23:59:59+03:00`,
   };
 }
+
+/**
+ * Fiyat gösterimi: "250" → "250 ₺". Backend Decimal'i JSON'da string
+ * olarak yolluyor (kayan nokta yuvarlama hatası olmasın diye) — bu yüzden
+ * girdi string.
+ */
+export function formatPrice(price: string | null | undefined): string | null {
+  if (price === null || price === undefined || price === '') return null;
+  const n = Number(price);
+  if (Number.isNaN(n)) return null;
+  return `${n.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ₺`;
+}

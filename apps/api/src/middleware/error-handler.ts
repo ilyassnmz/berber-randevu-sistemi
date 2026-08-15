@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import { AppError, SlotTakenError, isOverlapViolation } from '../lib/errors.js';
 import { isProduction } from '../config/env.js';
 import { logger } from '../lib/logger.js';
+import { captureError } from '../lib/sentry.js';
 
 /** Tanımsız rotalar için 404. */
 export const notFoundHandler: RequestHandler = (req, res) => {
@@ -62,7 +63,12 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   }
 
   // ── Beklenmeyen hatalar ───────────────────────────────
+  // Yalnızca BURAYA düşenler Sentry'ye gidiyor: yukarıdaki dallar (çakışma,
+  // doğrulama, bilinen AppError'lar) normal iş akışının parçası, hepsini
+  // göndermek Sentry'yi kullanıcı hatalarıyla doldurup gerçek arızaları
+  // görünmez yapardı.
   logger.error({ err, path: req.path, method: req.method }, 'Beklenmeyen hata');
+  captureError(err, { path: req.path, method: req.method });
 
   res.status(500).json({
     error: {

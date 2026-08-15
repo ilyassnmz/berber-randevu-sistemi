@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { X } from 'lucide-react';
 import { changePassword } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
 import { useAuthStore } from '../lib/authStore';
@@ -79,7 +80,7 @@ export function ChangePasswordModal({ onClose }: Props) {
         <div className="modal-header">
           <h2>Şifre Değiştir</h2>
           <button className="btn-icon" onClick={onClose} aria-label="Kapat">
-            ✕
+            <X size={18} aria-hidden />
           </button>
         </div>
 

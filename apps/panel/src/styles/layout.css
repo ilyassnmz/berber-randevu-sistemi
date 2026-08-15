@@ -190,6 +190,27 @@
   color: var(--text-dim);
 }
 
+/* Dar telefonlarda (4 ikon + isim + logo) üst çubuk sıkışıyor: isim ilk
+   feda edilen oluyor — berber zaten hangi hesapla girdiğini biliyor, ama
+   butonlara dokunabilmesi şart (44px dokunma hedefi korunmalı). */
+@media (max-width: 420px) {
+  .app-header-user > span {
+    display: none;
+  }
+
+  .app-header-user {
+    gap: 2px;
+  }
+
+  .app-header-title {
+    font-size: 15px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .app-content {
   flex: 1;
   padding: 16px;
@@ -298,12 +319,16 @@
   border-style: dashed;
   justify-content: center;
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
 .appt-time {
   font-weight: 700;
   font-size: 15px;
   min-width: 52px;
+  /* Saatler alt alta listeleniyor — orantılı rakamlarda "1" dar olduğu için
+     11:15 ile 09:00 farklı genişlikte çıkıp sütun tırtıklı görünüyordu. */
+  font-variant-numeric: tabular-nums;
 }
 
 .appt-body {
@@ -357,9 +382,26 @@
 /* ── Boş / hata / yükleniyor ─────────────────────────── */
 
 .state-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   text-align: center;
   color: var(--text-dim);
-  padding: 40px 16px;
+  padding: 48px 16px;
+}
+
+/* Boş durum ikonu: metnin yanında değil üstünde, soluk — ekranı doldurmak
+   için değil, "burada bir şey yok" durumunu bir bakışta anlatmak için. */
+.state-message svg {
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+.state-message-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 15px;
 }
 
 .loading-center {
@@ -444,6 +486,333 @@
 .detail-row a {
   color: var(--accent);
   text-decoration: none;
+}
+
+/* ── Hareket ─────────────────────────────────────────── */
+
+/* Modal aşağıdan kayarak açılıyor: mobilde bir alt sayfanın (bottom sheet)
+   nereden geldiği anlaşılsın diye. Kartlar için animasyon YOK — liste her
+   veri tazelenmesinde yeniden çizildiği için titreşim yaratırdı. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal-overlay {
+  animation: overlay-in 0.15s ease-out;
+}
+
+.modal-sheet {
+  animation: sheet-in 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.btn:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.appointment-card:active,
+.slot-card:active {
+  transform: scale(0.995);
+}
+
+.appointment-card,
+.slot-card {
+  transition:
+    transform 0.1s,
+    border-color 0.1s;
+}
+
+/* Vestibüler rahatsızlığı olan kullanıcılar için: işletim sisteminde
+   "hareketi azalt" açıksa hiçbir şey oynamasın. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── İkonlar ─────────────────────────────────────────── */
+
+/* Lucide ikonları `currentColor` ile çiziliyor — böylece bulundukları
+   metnin/butonun rengini otomatik alıyorlar ve tema değişince ayrıca
+   güncellenmeleri gerekmiyor. Buradaki tek iş hizalama. */
+svg {
+  flex-shrink: 0;
+}
+
+.btn svg,
+.status-badge svg,
+.settings-back svg,
+.form-error svg {
+  vertical-align: middle;
+}
+
+.form-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.appt-warn {
+  color: var(--status-noshow);
+  margin-left: 4px;
+  vertical-align: -2px;
+}
+
+/* ── İstatistikler ───────────────────────────────────── */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+/* Dikkat çekmesi gereken sayı (gelmedi oranı) kenar çizgisiyle ayrılıyor —
+   rengi tek başına anlam taşımasın diye etiket zaten yanında. */
+.stat-tile[data-tone='warn'] {
+  border-left: 3px solid var(--status-noshow);
+}
+
+.stat-tile-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-tile-label {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.stat-bar-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 36px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 13px;
+}
+
+.stat-bar-label {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-bar-track {
+  background: var(--surface-raised);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--status-confirmed);
+  /* En küçük değer bile görünsün — 0 genişlikte çubuk "veri yok" gibi
+     okunuyordu, oysa 1 randevu da bir veri. */
+  min-width: 3px;
+}
+
+.stat-bar-fill[data-status='completed'] { background: var(--status-completed); }
+.stat-bar-fill[data-status='confirmed'] { background: var(--status-confirmed); }
+.stat-bar-fill[data-status='pending_confirm'] { background: var(--status-pending); }
+.stat-bar-fill[data-status='cancelled'] { background: var(--status-cancelled); }
+.stat-bar-fill[data-status='no_show'] { background: var(--status-noshow); }
+
+.stat-bar-value {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Hizmetler ───────────────────────────────────────── */
+
+.service-row {
+  display: grid;
+  grid-template-columns: 1fr 84px 84px auto;
+  align-items: end;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.service-row:last-of-type {
+  border-bottom: none;
+}
+
+.service-row-name {
+  font-weight: 600;
+  font-size: 14px;
+  padding-bottom: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-row-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.service-row-field span {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.service-row-field input {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  color: var(--text);
+  font-size: 14px;
+  min-height: 40px;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-row-save {
+  padding: 10px 12px;
+  font-size: 13px;
+  min-height: 40px;
+}
+
+/* Dar telefonda 4 sütun sığmıyor — ad üste, alanlar altına. */
+@media (max-width: 420px) {
+  .service-row {
+    grid-template-columns: 1fr 1fr auto;
+  }
+
+  .service-row-name {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+}
+
+/* ── Müşteriler ──────────────────────────────────────── */
+
+.customer-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+
+.customer-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  padding: 12px 0;
+  min-height: var(--tap-min);
+}
+
+.customer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: left;
+  width: 100%;
+}
+
+.customer-row-info {
+  min-width: 0;
+}
+
+.customer-row-name {
+  font-weight: 600;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.customer-row-meta {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.customer-history-title {
+  font-size: 15px;
+  margin: 24px 0 8px;
+}
+
+.customer-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.customer-history-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.customer-history-item:last-child {
+  border-bottom: none;
+}
+
+.customer-history-when {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.customer-history-when span {
+  color: var(--text-dim);
+}
+
+.customer-history-what {
+  color: var(--text-dim);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Ayarlar sayfası ─────────────────────────────────── */
