@@ -708,27 +708,10 @@ async function showConfirmation(args: DispatchArgs): Promise<void> {
     return showMainMenu(customer, sessionId);
   }
 
-  // ── Aynı güne birden fazla randevu engeli ────────────
-  const existing = await prisma.appointment.findFirst({
-    where: {
-      customerId: customer.id,
-      status: { in: [APPOINTMENT_STATUS.PENDING_CONFIRM, APPOINTMENT_STATUS.CONFIRMED] },
-      startsAt: {
-        gte: new Date(new Date(context.startsAt).setUTCHours(0, 0, 0, 0)),
-        lt: new Date(new Date(context.startsAt).setUTCHours(23, 59, 59, 999)),
-      },
-    },
-  });
-
-  if (existing) {
-    await replyToCustomer(
-      customer,
-      'Bu güne zaten bir randevunuz var 🙂 Aynı güne ikinci randevu alınamıyor.',
-      { buttons: mainMenuButtons() },
-    );
-    await setSession(sessionId, CHAT_STATE.MAIN_MENU, {});
-    return;
-  }
+  // Not: "aynı güne ikinci randevu" kontrolü eskiden burada elle yapılıyordu.
+  // Artık randevu oluşturmanın ortak noktasında (services/appointments.ts) —
+  // internet sitesinden gelen randevularda da geçerli olsun diye. Buradaki
+  // karşılığı aşağıdaki catch bloğundaki DUPLICATE_SAME_DAY dalı.
 
   let appointmentId: string;
   try {
@@ -744,6 +727,19 @@ async function showConfirmation(args: DispatchArgs): Promise<void> {
     });
     appointmentId = appointment.id;
   } catch (error) {
+    // Aynı güne ikinci randevu. Bu dal, aşağıdaki "saat doldu" dalından ÖNCE
+    // gelmek zorunda: DUPLICATE_SAME_DAY da bir ConflictError ve sıralama ters
+    // olsaydı müşteriye sebebi tamamen yanlış bir mesaj giderdi.
+    if (error instanceof ConflictError && error.code === 'DUPLICATE_SAME_DAY') {
+      await replyToCustomer(
+        customer,
+        'Bu güne zaten bir randevunuz var 🙂 Aynı güne ikinci randevu alınamıyor.',
+        { buttons: mainMenuButtons() },
+      );
+      await setSession(sessionId, CHAT_STATE.MAIN_MENU, {});
+      return;
+    }
+
     if (error instanceof SlotTakenError || error instanceof ConflictError) {
       // Slot gerçekten dolu (çakışma kısıtı ya da ön kontrol) — beklenen bir
       // durum, kullanıcıya güncel saatler yeniden sunuluyor.

@@ -44,6 +44,7 @@ enum CancelledBy {
 enum AppointmentSource {
   whatsapp
   panel
+  web
 }
 
 enum MessageCategory {
@@ -75,8 +76,12 @@ model Shop {
   /// Slot ızgarasının adımı (dakika). Randevu süresi services.durationMin'den okunur.
   slotStepMin Int @default(45) @map("slot_step_min")
 
-  /// En fazla kaç gün sonrası için randevu alınabilir.
-  maxAdvanceDays Int @default(30) @map("max_advance_days")
+  /// Müşterinin en fazla kaç gün sonrasına randevu alabileceği.
+  ///
+  /// ⚠️ Yalnızca MÜŞTERİ tarafına (internet sitesi, chatbot) uygulanır. Berber
+  /// panelden istediği tarihe randevu girebilir — ileri tarihli özel talepleri
+  /// elle işleyebilsin diye. Bkz. services/appointments.ts → BookingActor.
+  maxAdvanceDays Int @default(7) @map("max_advance_days")
 
   /// Randevuya bu kadar dakikadan az kaldıysa müşteri kendisi iptal edemez.
   cancelCutoffMin Int @default(120) @map("cancel_cutoff_min")
@@ -320,8 +325,14 @@ model Appointment {
   cancelReason String?      @map("cancel_reason")
   cancelledAt  DateTime?    @map("cancelled_at") @db.Timestamptz(3)
 
-  /// Walk-in randevular 'panel' kaynaklıdır.
+  /// Walk-in randevular 'panel', internet sitesinden alınanlar 'web' kaynaklıdır.
   source AppointmentSource @default(whatsapp)
+
+  /// Siteden randevu alan müşterinin randevusunu görüntüleyip iptal etmesi için
+  /// verilen gizli anahtar. Randevu `id`'si BİLEREK kullanılmıyor: id panelde,
+  /// loglarda ve denetim kayıtlarında dolaşıyor; oradan sızması iptal yetkisi
+  /// vermemeli. Yalnızca `web` kaynaklı randevularda dolu olur.
+  publicToken String? @unique @map("public_token")
 
   /// pending_confirm durumundaki randevu bu andan sonra otomatik düşer.
   confirmDeadline DateTime? @map("confirm_deadline") @db.Timestamptz(3)

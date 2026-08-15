@@ -4,7 +4,11 @@ import { createApp } from '../src/app.js';
 import { createFixture, destroyFixture, testPrisma, type TestFixture } from './helpers.js';
 import { zonedTimeToUtc } from '../src/lib/time.js';
 import { FakeWhatsAppClient, setWhatsAppClient } from '../src/services/whatsapp/client.js';
-import { cancelAppointment } from '../src/services/appointments.js';
+import {
+  cancelAppointment,
+  createAppointment,
+  getAvailableSlots,
+} from '../src/services/appointments.js';
 import { BARBER_ROLE } from '@berber/shared';
 
 /**
@@ -682,5 +686,109 @@ describe('Servis katmanında yetki kontrolü (route\'tan bağımsız)', () => {
       where: { id: created.body.appointment.id },
     });
     expect(stillActive?.status).toBe('confirmed');
+  });
+});
+
+/**
+ * İleri tarih sınırı (shops.maxAdvanceDays = 7).
+ *
+ * Kural TEK bir sayı olarak dükkan ayarında duruyor ama HERKESE aynı
+ * uygulanmıyor: müşteri en fazla 1 hafta sonrasına randevu alabilir, berber
+ * ise istediği tarihe girebilir (düğün gibi ileri tarihli talepleri telefonla
+ * alıp elle işleyebilsin diye).
+ *
+ * Bu ayrım sessizce bozulmaya çok müsait — sınır paylaşılan slot motorunda
+ * yaşıyor ve oraya yeni bir çağıran eklendiğinde varsayılan davranış devreye
+ * giriyor. Aşağıdaki testler ayrımın iki yönünü de kilitliyor.
+ */
+describe('İleri tarih sınırı yalnızca müşteri tarafına uygulanır', () => {
+  /**
+   * 20 gün sonrası. Bilerek TEST_DATE'in (bugün+7 ile bugün+13 arası bir
+   * çarşamba) erişemeyeceği kadar uzak seçildi — iki tarih çakışırsa testler
+   * birbirinin randevusuna takılırdı.
+   */
+  const farDate = localDatePlusDays(20);
+
+  /** Sınırın İÇİNDE bir gün — kontrol grubu (aşağıdaki gerekçeye bakın). */
+  const nearDate = localDatePlusDays(3);
+
+  /**
+   * ⚠️ Izgara üstünde bir saat olmalı.
+   *
+   * Slot ızgarası 09:00'dan başlayıp 45'er dakika ilerliyor (09:00, 09:45,
+   * 10:30 ...). "10:00" gibi ızgara dışı bir saat TARİHTEN BAĞIMSIZ olarak
+   * reddedilir; onunla yazılan bir test "ileri tarih reddedildi" sanıp yanlış
+   * sebeple geçer.
+   */
+  const SLOT_TIME = '09:00';
+
+  function localDatePlusDays(days: number): string {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  it('müşteri 7 günden ileriye randevu ALAMAZ', async () => {
+    await expect(
+      createAppointment({
+        shopId: fx.shopId,
+        barberId: fx.adminId,
+        serviceId: fx.serviceId,
+        startsAt: zonedTimeToUtc(farDate, SLOT_TIME, TZ),
+        customerName: 'Uzak Tarih Müşterisi',
+        customerPhone: '+905559998877',
+        source: 'web',
+      }),
+    ).rejects.toThrow(/müsait değil/i);
+  });
+
+  it('aynı müşteri sınırın içindeki bir güne AYNI saatte randevu alabilir', async () => {
+    // Kontrol grubu: yukarıdaki reddin gerçekten TARİH yüzünden olduğunu
+    // kanıtlıyor. Bu test olmadan, saatin ızgara dışı olması gibi bambaşka
+    // bir sebeple gelen bir ret de testi "geçirir" ve sınır aslında hiç
+    // sınanmamış olur.
+    const appointment = await createAppointment({
+      shopId: fx.shopId,
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: zonedTimeToUtc(nearDate, SLOT_TIME, TZ),
+      customerName: 'Yakın Tarih Müşterisi',
+      customerPhone: '+905559998877',
+      source: 'web',
+    });
+
+    expect(appointment.id).toBeTruthy();
+    expect(appointment.source).toBe('web');
+  });
+
+  it('müşteriye 7 gün ötesi için hiç saat gösterilmez', async () => {
+    // auth verilmiyor → çağıran müşteri tarafı (site/chatbot)
+    const slots = await getAvailableSlots(fx.shopId, fx.adminId, fx.serviceId, farDate);
+    expect(slots).toHaveLength(0);
+  });
+
+  it('berber panelden 7 günden ileriye randevu girebilir', async () => {
+    const appointment = await createAppointment({
+      shopId: fx.shopId,
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: zonedTimeToUtc(farDate, SLOT_TIME, TZ),
+      customerName: 'Düğün Müşterisi',
+      customerPhone: '+905557776655',
+      source: 'panel',
+    });
+
+    expect(appointment.id).toBeTruthy();
+    expect(appointment.source).toBe('panel');
+  });
+
+  it('berbere panelde 7 gün ötesi için saatler gösterilir', async () => {
+    const res = await request(app)
+      .get(`${BASE}/slots`)
+      .query({ barberId: fx.adminId, serviceId: fx.serviceId, date: farDate })
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.slots.length).toBeGreaterThan(0);
   });
 });

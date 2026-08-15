@@ -43,6 +43,27 @@ import { sendToCustomer } from './whatsapp/messaging.js';
 // Slot hesabı için veri toplama
 // ─────────────────────────────────────────────────────────
 
+/**
+ * İleri tarih sınırı (`shops.maxAdvanceDays`) kime uygulanacak?
+ *
+ * Müşteri en fazla 1 hafta sonrasına randevu alabilir — takvimin aylar öncesinden
+ * dolmasını engellemek için. Ama BERBER bu sınıra tabi değil: düğün gibi ileri
+ * tarihli bir talebi telefonla alıp panelden işleyebilmesi gerekiyor.
+ *
+ * Bu yüzden sınır dükkan ayarında tek bir sayı olarak durmakla birlikte, slot
+ * hesabına kimin adına girildiğine göre uygulanıyor.
+ */
+export type BookingActor = 'customer' | 'barber';
+
+/**
+ * Berber için "sınır yok" demenin yolu.
+ *
+ * `maxAdvanceDays`'i opsiyonel yapıp `undefined` kontrolü eklemek yerine büyük
+ * bir sayı veriliyor: slot motoru (slots.ts) saf ve tek kurallı kalsın diye.
+ * 10 yıl, pratikte sınırsız.
+ */
+const NO_ADVANCE_LIMIT_DAYS = 3650;
+
 interface SlotContext {
   timezone: string;
   slotStepMin: number;
@@ -57,16 +78,20 @@ interface SlotContext {
  * Bir berberin belirli bir gündeki müsaitliğini hesaplamak için gereken
  * her şeyi tek seferde toplar.
  *
- * @param excludeAppointmentId Erteleme sırasında randevunun kendisi
+ * @param opts.excludeAppointmentId Erteleme sırasında randevunun kendisi
  *        "dolu" sayılmamalı; aksi halde kendi saatine ertelenemez.
+ * @param opts.actor İleri tarih sınırının uygulanıp uygulanmayacağını belirler.
+ *        Varsayılan BİLEREK 'customer': sınırlı olan taraf varsayılan olsun,
+ *        yeni bir çağıran eklendiğinde sınır sessizce atlanmasın.
  */
 async function loadSlotContext(
   shopId: string,
   barberId: string,
   serviceId: string,
   date: string,
-  excludeAppointmentId?: string,
+  opts: { excludeAppointmentId?: string; actor?: BookingActor } = {},
 ): Promise<SlotContext> {
+  const { excludeAppointmentId, actor = 'customer' } = opts;
   const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new NotFoundError('Dükkan bulunamadı');
 
@@ -116,7 +141,7 @@ async function loadSlotContext(
   return {
     timezone: shop.timezone,
     slotStepMin: shop.slotStepMin,
-    maxAdvanceDays: shop.maxAdvanceDays,
+    maxAdvanceDays: actor === 'barber' ? NO_ADVANCE_LIMIT_DAYS : shop.maxAdvanceDays,
     serviceDurationMin: service.durationMin,
     workingHours: workingHours
       ? {
@@ -140,7 +165,12 @@ export async function getAvailableSlots(
 ): Promise<Slot[]> {
   if (auth) assertCanAccessBarber(auth, barberId);
 
-  const ctx = await loadSlotContext(shopId, barberId, serviceId, date);
+  // `auth` yalnızca panelden gelen isteklerde dolu olur — yani soran berberdir
+  // ve ileri tarih sınırına tabi değildir. Müşteri tarafı (internet sitesi ve
+  // chatbot) auth göndermez; onlar için sınır geçerli.
+  const actor: BookingActor = auth ? 'barber' : 'customer';
+
+  const ctx = await loadSlotContext(shopId, barberId, serviceId, date, { actor });
   return computeAvailableSlots({ ...ctx, date, now });
 }
 
@@ -155,7 +185,8 @@ export interface CreateAppointmentParams {
   startsAt: Date;
   customerName: string;
   customerPhone?: string | undefined;
-  source: 'whatsapp' | 'panel';
+  /** 'web' = internet sitesi, 'panel' = berberin elle girdiği walk-in. */
+  source: 'whatsapp' | 'panel' | 'web';
   status?: AppointmentStatus;
   actorId?: string | null;
   auth?: AuthContext;
@@ -197,7 +228,11 @@ export async function createAppointment(params: CreateAppointmentParams) {
   const localDate = formatLocalDateFromInstant(startsAt, shop.timezone);
 
   // ── Slot gerçekten alınabilir mi? ────────────────────
-  const ctx = await loadSlotContext(shopId, barberId, serviceId, localDate);
+  // İleri tarih sınırı yalnızca müşteri tarafına uygulanır; panelden randevu
+  // giren berber istediği tarihe girebilir (bkz. BookingActor).
+  const actor: BookingActor = source === 'panel' ? 'barber' : 'customer';
+
+  const ctx = await loadSlotContext(shopId, barberId, serviceId, localDate, { actor });
   const bookable = isSlotBookable(startsAt, { ...ctx, date: localDate, now: new Date() });
 
   if (!bookable) {
@@ -212,6 +247,39 @@ export async function createAppointment(params: CreateAppointmentParams) {
 
   if (customer.isBlacklisted) {
     throw new ConflictError('Bu müşteri kara listede.', 'CUSTOMER_BLACKLISTED');
+  }
+
+  // ── Aynı güne ikinci randevu ─────────────────────────
+  //
+  // Bu kural eskiden yalnızca chatbot akışının içindeydi. Randevu almanın
+  // ikinci bir yolu (internet sitesi) açıldığı an oradan kaçak veriyordu;
+  // bu yüzden randevu oluşturmanın TEK ortak noktasına taşındı.
+  //
+  // Yalnızca müşteri tarafına uygulanır: berber, aynı müşteriye aynı gün
+  // içinde ikinci bir randevu vermek isteyebilir (örn. iki ayrı hizmet).
+  //
+  // ⚠️ Gün sınırı YEREL güne göre hesaplanıyor. Eski chatbot kodu UTC gününü
+  // kullanıyordu; Türkiye UTC+3 olduğu için gecenin ilk üç saatindeki
+  // randevular yanlış güne düşüyordu.
+  if (actor === 'customer') {
+    const { start: dayStart, end: dayEnd } = localDayBounds(localDate, shop.timezone);
+
+    const sameDay = await prisma.appointment.findFirst({
+      where: {
+        customerId: customer.id,
+        status: {
+          in: [APPOINTMENT_STATUS.PENDING_CONFIRM, APPOINTMENT_STATUS.CONFIRMED],
+        },
+        startsAt: { gte: dayStart, lt: dayEnd },
+      },
+    });
+
+    if (sameDay) {
+      throw new ConflictError(
+        'Bu güne zaten bir randevunuz var. Aynı güne ikinci randevu alınamıyor.',
+        'DUPLICATE_SAME_DAY',
+      );
+    }
   }
 
   const endsAt = addMinutes(startsAt, service.durationMin);
@@ -574,12 +642,14 @@ export async function rescheduleAppointment(
 
   // Randevunun kendisi "dolu" sayılmamalı — kendi saatine yakın bir slota
   // taşınabilmesi gerekiyor.
+  // Erteleme yalnızca panelden yapılıyor (chatbot ve site ertelemiyor), yani
+  // işlemi yapan berber — ileri tarih sınırına tabi değil.
   const ctx = await loadSlotContext(
     shopId,
     appointment.barberId,
     appointment.serviceId,
     localDate,
-    appointmentId,
+    { excludeAppointmentId: appointmentId, actor: 'barber' },
   );
 
   if (!isSlotBookable(newStartsAt, { ...ctx, date: localDate, now: new Date() })) {
