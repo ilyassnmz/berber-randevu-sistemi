@@ -488,6 +488,22 @@
   text-decoration: none;
 }
 
+/* Telefon satırı: numaraya dokununca arama, ikona dokununca WhatsApp.
+   Berber çoğu zaman ikisinden birini istiyor — ikisi de tek dokunuşta. */
+.phone-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.phone-wa {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  color: var(--accent);
+}
+
 /* ── Hareket ─────────────────────────────────────────── */
 
 /* Modal aşağıdan kayarak açılıyor: mobilde bir alt sayfanın (bottom sheet)

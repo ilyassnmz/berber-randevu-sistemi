@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { X, CheckCheck, UserX, Clock } from 'lucide-react';
+import { X, CheckCheck, UserX, Clock, MessageCircle } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from '../lib/types';
+import { formatPhoneForDisplay } from '@berber/shared';
 import { formatDateTr, formatTimeTr, formatPrice } from '../lib/dates';
 import { StatusBadge } from './StatusBadge';
 import { RescheduleModal } from './RescheduleModal';
@@ -99,9 +100,23 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
           <div className="detail-row">
             <span>Telefon</span>
             {appointment.customer.phone ? (
-              <a href={`https://wa.me/${appointment.customer.phone.replace('+', '')}`} target="_blank" rel="noreferrer">
-                {appointment.customer.phone}
-              </a>
+              <span className="phone-actions">
+                {/* Numara okunabilir yerel biçimde; bağlantılar ise ham
+                    E.164 kullanıyor — wa.me ve tel: bunu bekliyor. */}
+                <a href={`tel:${appointment.customer.phone}`} title="Ara">
+                  {formatPhoneForDisplay(appointment.customer.phone)}
+                </a>
+                <a
+                  href={`https://wa.me/${appointment.customer.phone.replace('+', '')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-icon phone-wa"
+                  aria-label="WhatsApp'tan yaz"
+                  title="WhatsApp'tan yaz"
+                >
+                  <MessageCircle size={16} aria-hidden />
+                </a>
+              </span>
             ) : (
               <span>—</span>
             )}

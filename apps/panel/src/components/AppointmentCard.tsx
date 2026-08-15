@@ -1,4 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
+import { formatPhoneForDisplay } from '@berber/shared';
 import type { Appointment } from '../lib/types';
 import { formatTimeTr } from '../lib/dates';
 import { StatusBadge } from './StatusBadge';
@@ -23,7 +24,11 @@ export function AppointmentCard({ appointment, onClick }: Props) {
         </div>
         <div className="appt-meta">
           {appointment.service.name}
-          {appointment.customer.phone ? ` · ${appointment.customer.phone}` : ''}
+          {/* WhatsApp'tan gelen numara veritabanında E.164 (+905321234567)
+              tutuluyor — berbere okunabilir yerel biçimde gösteriliyor. */}
+          {appointment.customer.phone
+            ? ` · ${formatPhoneForDisplay(appointment.customer.phone)}`
+            : ''}
         </div>
       </div>
       <StatusBadge status={appointment.status} />

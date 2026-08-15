@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, CalendarOff } from 'lucide-react';
+import { X, CalendarOff, MessageCircle } from 'lucide-react';
 import { formatPhoneForDisplay } from '@berber/shared';
 import { fetchCustomer, blacklistCustomer, unblacklistCustomer } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
@@ -73,13 +73,21 @@ export function CustomerDetailModal({ customerId, onClose }: Props) {
             <div className="detail-row">
               <span>Telefon</span>
               {customer.phone ? (
-                <a
-                  href={`https://wa.me/${customer.phone.replace('+', '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {formatPhoneForDisplay(customer.phone)}
-                </a>
+                <span className="phone-actions">
+                  <a href={`tel:${customer.phone}`} title="Ara">
+                    {formatPhoneForDisplay(customer.phone)}
+                  </a>
+                  <a
+                    href={`https://wa.me/${customer.phone.replace('+', '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-icon phone-wa"
+                    aria-label="WhatsApp'tan yaz"
+                    title="WhatsApp'tan yaz"
+                  >
+                    <MessageCircle size={16} aria-hidden />
+                  </a>
+                </span>
               ) : (
                 <span>—</span>
               )}
