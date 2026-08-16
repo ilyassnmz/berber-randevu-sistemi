@@ -38,7 +38,11 @@ services:
       dockerfile: deploy/Dockerfile.caddy
     restart: unless-stopped
     environment:
+      # Müşteri randevu sitesi
       - DOMAIN=${DOMAIN}
+      # Berber paneli. Natro'da bu ad için A kaydı olmalı, yoksa Caddy
+      # sertifika alamaz ve panel açılmaz.
+      - PANEL_DOMAIN=${PANEL_DOMAIN}
     ports:
       - '80:80'
       - '443:443'

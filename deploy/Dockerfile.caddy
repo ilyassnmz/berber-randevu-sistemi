@@ -1,10 +1,14 @@
 # ══════════════════════════════════════════════════════════════════
-#  Panel + Caddy imajı
+#  Site + Panel + Caddy imajı
 # ══════════════════════════════════════════════════════════════════
 #
-# Panel burada Docker İÇİNDE derlenir (host'ta elle `npm run build`
-# çalıştırıp dosya kopyalamaya güvenmek yerine) — böylece deploy tek
-# komutla, insan hatasına yer bırakmadan tekrarlanabilir.
+# İKİ ön yüz derleniyor ve tek Caddy tarafından sunuluyor:
+#   /srv/web    → herkese açık randevu sitesi   ({$DOMAIN})
+#   /srv/panel  → berber paneli                 ({$PANEL_DOMAIN})
+#
+# İkisi de Docker İÇİNDE derlenir (host'ta elle `npm run build` çalıştırıp
+# dosya kopyalamaya güvenmek yerine) — böylece deploy tek komutla, insan
+# hatasına yer bırakmadan tekrarlanabilir.
 #
 # Repo kökünden çalıştırılmalı:
 #
@@ -14,19 +18,23 @@ FROM node:20-slim AS build
 
 WORKDIR /app
 
-# ⚠️ tsconfig.base.json dahil: panel ve shared'ın tsconfig'leri bunu
+# ⚠️ tsconfig.base.json dahil: web, panel ve shared'ın tsconfig'leri bunu
 # "../../tsconfig.base.json" olarak extend ediyor.
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/panel/package.json apps/panel/package.json
+COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN npm ci
 
 COPY packages/shared packages/shared
 COPY apps/panel apps/panel
+COPY apps/web apps/web
 
+# shared ÖNCE: diğer ikisi ona bağımlı.
 RUN npm run build --workspace=@berber/shared \
-    && npm run build --workspace=@berber/panel
+    && npm run build --workspace=@berber/panel \
+    && npm run build --workspace=@berber/web
 
 # ─────────────────────────────────────────────────────────
 
@@ -37,5 +45,6 @@ FROM caddy:2-alpine
 # (setcap ya da host'ta 8080/8443'e yönlendirip Docker'a taşıtmak) docker-
 # compose.yml'e de dokunmayı gerektirir — tek dükkanlı, güvenilir bir imajdan
 # (resmi Caddy) gelen bu risk, ekstra karmaşıklığa değmiyor.
+COPY --from=build /app/apps/web/dist /srv/web
 COPY --from=build /app/apps/panel/dist /srv/panel
 COPY deploy/Caddyfile /etc/caddy/Caddyfile

@@ -2,12 +2,19 @@
 #  Caddy yapılandırması
 # ══════════════════════════════════════════════════════════════════
 #
-# Panel ve API AYNI domain üzerinden servis ediliyor — bu sayede
-# tarayıcıda CORS/çerez sorunu hiç yaşanmıyor (aynı origin).
+# İKİ ayrı site:
 #
-# {$DOMAIN} ortam değişkeninden okunur (docker-compose.yml → .env).
-# Caddy bu domain için Let's Encrypt sertifikasını OTOMATİK alır;
-# elle sertifika kurmaya gerek yok.
+#   {$DOMAIN}        ozdedehairstudio.com        → müşteri randevu sitesi
+#   {$PANEL_DOMAIN}  panel.ozdedehairstudio.com  → berber paneli
+#
+# İkisinde de /api aynı arka uca gidiyor. Bu bilinçli: her ön yüz KENDİ
+# adresindeki /api'yi çağırıyor, dolayısıyla tarayıcı açısından istekler
+# aynı origin'e gidiyor ve CORS hiç devreye girmiyor. Ayrı bir api.* alan
+# adı açılsaydı iki ön yüz için de CORS ve çerez ayarı gerekirdi.
+#
+# ⚠️ Alt alan adı için Natro'da A kaydı gerekiyor:
+#     Tip: A   Ad: panel   Değer: <sunucu IP>
+# Kayıt yoksa Caddy o alan adı için sertifika ALAMAZ ve panel açılmaz.
 #
 # ⚠️ acme_ca elle production'a sabitlendi: DNS yanlış hedefi gösterdiği
 # dönemde production'a yapılan denemeler başarısız olunca Caddy kendiliğinden
@@ -18,12 +25,12 @@
 	acme_ca https://acme-v02.api.letsencrypt.org/directory
 }
 
-{$DOMAIN} {
-	# API ve webhook istekleri arka uçtaki Node sürecine gider.
+# ─── Ortak tanımlar ───────────────────────────────────────────────
+#
+# API yönlendirmesi iki sitede de birebir aynı; tek yerde tutuluyor ki
+# biri değişip diğeri unutulmasın.
+(api_routes) {
 	handle /api/* {
-		reverse_proxy api:3000
-	}
-	handle /webhook/* {
 		reverse_proxy api:3000
 	}
 	handle /healthz {
@@ -32,19 +39,71 @@
 	handle /readyz {
 		reverse_proxy api:3000
 	}
+}
+
+(spa_headers) {
+	encode gzip
+
+	header {
+		# Ön yüz varlıkları içerik-adresli (Vite dosya adına hash koyuyor),
+		# bu yüzden uzun süre önbelleklenebilir.
+		?Cache-Control "public, max-age=3600"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# index.html ASLA önbelleklenmemeli: yeni sürüm yayınlandığında
+	# tarayıcı eski index'i tutarsa, artık var olmayan hash'li dosyaları
+	# istemeye devam eder ve site beyaz ekrana düşer.
+	@html path /index.html /
+	header @html Cache-Control "no-cache"
+}
+
+# ══════════════════════════════════════════════════════════════════
+#  Müşteri randevu sitesi
+# ══════════════════════════════════════════════════════════════════
+{$DOMAIN} {
+	import api_routes
+
+	# WhatsApp webhook'u yalnızca ana alan adında. Cloud API şu an
+	# kullanılmıyor (bkz. DURUM.md) ama uç duruyor — ileride bir numara
+	# bağlanırsa Meta'ya verilecek adres değişmesin.
+	handle /webhook/* {
+		reverse_proxy api:3000
+	}
+
+	# Gizlilik politikası — herkese açık, KVKK için gerekli.
 	handle /gizlilik {
 		reverse_proxy api:3000
 	}
 
-	# Geri kalan her şey panelin statik dosyaları.
-	# try_files ile SPA yönlendirmesi: /takvim gibi bir path'e doğrudan
-	# girilirse (sayfa yenileme, favorilerden açma) 404 yerine index.html
-	# dönülür — React Router isteği oradan devralır.
+	handle {
+		root * /srv/web
+		# SPA yönlendirmesi: /randevu/<anahtar> gibi bir adrese doğrudan
+		# girildiğinde (WhatsApp'tan gelen link, sayfa yenileme) 404 yerine
+		# index.html dönülür; React Router isteği oradan devralır.
+		try_files {path} /index.html
+		file_server
+		import spa_headers
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# ══════════════════════════════════════════════════════════════════
+#  Berber paneli
+# ══════════════════════════════════════════════════════════════════
+{$PANEL_DOMAIN} {
+	import api_routes
+
 	handle {
 		root * /srv/panel
 		try_files {path} /index.html
 		file_server
-		encode gzip
+		import spa_headers
 	}
 
 	log {
