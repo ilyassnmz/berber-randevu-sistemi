@@ -35,8 +35,12 @@ export const CANCELLED_BY = {
 export type CancelledBy = (typeof CANCELLED_BY)[keyof typeof CANCELLED_BY];
 
 export const APPOINTMENT_SOURCE = {
+  /** Chatbot üzerinden. Randevu alma siteye taşındıktan sonra yalnızca eski kayıtlarda. */
   WHATSAPP: 'whatsapp',
+  /** Berberin panelden elle girdiği walk-in randevu. */
   PANEL: 'panel',
+  /** İnternet sitesinden müşterinin kendi aldığı randevu. */
+  WEB: 'web',
 } as const;
 
 export type AppointmentSource = (typeof APPOINTMENT_SOURCE)[keyof typeof APPOINTMENT_SOURCE];

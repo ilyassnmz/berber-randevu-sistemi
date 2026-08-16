@@ -192,6 +192,11 @@ export interface CreateAppointmentParams {
   auth?: AuthContext;
   /** Panelden walk-in oluşturulurken müşteriye onay mesajı gönderilsin mi? */
   notifyCustomer?: boolean;
+  /**
+   * Siteden alınan randevularda, müşterinin randevusunu daha sonra görüntüleyip
+   * iptal edebilmesi için üretilen gizli anahtar. Yalnızca `web` kaynağında dolu.
+   */
+  publicToken?: string | undefined;
 }
 
 /**
@@ -215,6 +220,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
     actorId = null,
     auth,
     notifyCustomer = false,
+    publicToken,
   } = params;
 
   if (auth) assertCanAccessBarber(auth, barberId);
@@ -296,6 +302,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
         endsAt,
         status,
         source,
+        publicToken: publicToken ?? null,
         confirmDeadline:
           status === APPOINTMENT_STATUS.PENDING_CONFIRM
             ? new Date(Date.now() + shop.confirmTimeoutMin * 60_000)

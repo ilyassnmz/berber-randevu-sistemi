@@ -91,6 +91,29 @@ export const rescheduleAppointmentSchema = z.object({
 });
 export type RescheduleAppointmentInput = z.infer<typeof rescheduleAppointmentSchema>;
 
+/**
+ * İnternet sitesinden randevu alma.
+ *
+ * `createAppointmentSchema`'dan iki farkı var ve ikisi de bilinçli:
+ *
+ *   1. Telefon ZORUNLU. Panelde opsiyonel, çünkü kapıdan gelen müşteri
+ *      numarasını vermek zorunda değil ve berber onu zaten görüyor. Siteden
+ *      randevu alanı ise berber tanımıyor — numara, randevuyu bir kişiye
+ *      bağlayan tek şey.
+ *   2. `notifyCustomer` yok. Müşteriye ne gönderileceğine istemci karar
+ *      verememeli; site tarafı bunu isteyip sunucuyu mesaj göndermeye
+ *      zorlayabilseydi kötüye kullanılırdı.
+ */
+export const publicBookingSchema = z.object({
+  barberId: uuidSchema,
+  serviceId: uuidSchema,
+  /** ISO 8601, saat dilimi bilgisi dahil. */
+  startsAt: z.string().datetime({ offset: true }),
+  customerName: z.string().trim().min(2, 'Adınızı ve soyadınızı yazın').max(120),
+  customerPhone: phoneSchema,
+});
+export type PublicBookingInput = z.infer<typeof publicBookingSchema>;
+
 export const listAppointmentsQuerySchema = z.object({
   barberId: uuidSchema.optional(),
   date: localDateSchema.optional(),

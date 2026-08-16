@@ -16,6 +16,7 @@ import { servicesRouter } from './routes/services.js';
 import { customersRouter } from './routes/customers.js';
 import { statsRouter } from './routes/stats.js';
 import { webhookRouter } from './routes/webhook.js';
+import { publicRouter } from './routes/public.js';
 import { legalRouter } from './routes/legal.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
@@ -108,6 +109,13 @@ export function createApp(): Express {
   );
 
   // ── API rotaları ───────────────────────────────────────
+  //
+  // ⚠️ `public` GİRİŞ İSTEMEZ — internet sitesinden randevu alan müşteriler
+  // buradan geçiyor. Diğer tüm /api/v1/* uçları `requireAuth` arkasında.
+  // Randevu oluşturma ucunun kendi içinde ayrıca çok daha dar bir hız sınırı
+  // var (bkz. routes/public.ts).
+  app.use('/api/v1/public', publicRouter);
+
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/appointments', appointmentsRouter);
   app.use('/api/v1/barbers', barbersRouter);
