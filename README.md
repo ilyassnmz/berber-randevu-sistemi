@@ -1,6 +1,23 @@
-# 💈 Özdede Hair Studio — WhatsApp Randevu Sistemi
+# 💈 Özdede Hair Studio — Online Randevu Sistemi
 
-Müşteriler WhatsApp üzerinden randevu alır, berberler mobil web panelinden yönetir.
+Müşteriler **internet sitesinden** randevu alır, berberler mobil web panelinden yönetir.
+
+| Adres | Ne? | Uygulama |
+|---|---|---|
+| `ozdedehairstudio.com` | Müşteri randevu sitesi | `apps/web` |
+| `panel.ozdedehairstudio.com` | Berber paneli (PWA) | `apps/panel` |
+
+> ⚠️ **Mimari değişti.** Proje başlangıçta randevuları WhatsApp chatbot'u
+> üzerinden alıyordu. Berberin isteği üzerine randevu alma siteye taşındı;
+> WhatsApp artık yalnızca siteye **yönlendirme** yapıyor ve bunun için kod
+> değil, ücretsiz WhatsApp Business uygulamasının "Karşılama mesajı"
+> özelliği kullanılıyor.
+>
+> Sebebi: WhatsApp Cloud API bir numarayı devraldığında o numara WhatsApp
+> uygulamasından çıkıyor; berber kendi numarasını günlük hayatta kullanmaya
+> devam etmek istedi. Chatbot kodu silinmedi, uykuda duruyor.
+>
+> Ayrıntı: **[DURUM.md](DURUM.md)** · Berber için kurulum: **[WHATSAPP-KURULUM.md](WHATSAPP-KURULUM.md)**
 
 Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 
@@ -15,18 +32,21 @@ Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
 | M2 — Slot motoru | ✅ Tamamlandı |
 | M3 — Backend API | ✅ Tamamlandı |
 | M4 — Güvenlik | ✅ Tamamlandı |
-| M5 — WhatsApp | ✅ Kod hazır — Meta hesabı bekleniyor |
-| M6 — Chatbot | ✅ Tamamlandı |
+| M5 — WhatsApp Cloud API | 💤 Kod hazır ama **kullanılmıyor** (yukarıdaki nota bakın) |
+| M6 — Chatbot | 💤 Tamamlandı ama **uykuda** — randevu akışı siteye taşındı |
 | M7 — Panel (PWA) | ✅ Tamamlandı |
-| M9 — Hatırlatma cron'ları | ✅ Tamamlandı |
+| M9 — Hatırlatma cron'ları | 💤 Kod hazır — Cloud API olmadan mesaj gönderilemiyor |
 | M8 — Gizlilik/KVKK sayfası | ✅ Tamamlandı (`/gizlilik`) |
-| Dağıtım (Docker + Caddy) | ✅ Dosyalar hazır — sunucuda henüz test edilmedi |
-| Üretime alma (Hetzner + domain) | ⚪ Sunucu/domain bekleniyor |
-| WhatsApp gerçek numara bağlantısı | ⚪ **Bilinçli olarak en son** — önce yukarıdakiler doğrulanacak |
+| Herkese açık randevu API'si | ✅ Tamamlandı (`/api/v1/public`) |
+| Müşteri randevu sitesi (`apps/web`) | ✅ Tamamlandı |
+| Üretime alma (Hetzner + domain) | ✅ Canlı (`ozdedehairstudio.com`) |
+| İki siteli dağıtım (site + panel) | ⚪ Yapılandırma hazır — **Natro'da `panel` A kaydı bekleniyor** |
 
 **Hazır olanlar:** Veri modeli (15 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in, erteleme, `Idempotency-Key` dahil) · müşteri listesi/detayı · WhatsApp webhook (imza doğrulaması + idempotency + spam koruması) · chatbot (randevu alma — gerçek `pending_confirm` rezervasyonuyla, iptal, listeleme) · yönetim paneli (PWA — giriş, açık/koyu tema, günlük takvim, walk-in, randevu detayı, erteleme, kara liste) · hatırlatma cron'ları · gizlilik politikası sayfası · dağıtım dosyaları (Dockerfile, docker-compose, Caddyfile)
 
-**Sıradaki:** Hetzner sunucusu + domain kurulup her şey WhatsApp'sız doğrulanacak, WhatsApp bağlantısı en son adım olacak. Ayrıntı: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
+**Sıradaki:** Natro'da `panel` alt alan adı için A kaydı oluşturulacak, ardından iki siteli dağıtım yapılacak. Adımlar: [DURUM.md](DURUM.md) · [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
+
+⚠️ A kaydı oluşturulmadan dağıtım yapılmamalı: kök alan adı artık müşteri sitesini sunacağı için berberler panele erişemez hale gelir.
 
 > ⚠️ **Docker dosyaları yerel makinede test edilemedi** — bu makinede Docker kurulu değil.
 > Dosyalar dikkatle yazıldı ve mantığı elle doğrulandı, ama gerçek `docker build`

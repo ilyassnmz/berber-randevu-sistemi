@@ -32,6 +32,27 @@ import {
  *  CHATBOT
  * ══════════════════════════════════════════════════════════════════
  *
+ * ⚠️ ŞU AN KULLANILMIYOR — UYKUDA. Silmeden önce burayı okuyun.
+ *
+ * Randevu alma WhatsApp'tan internet sitesine taşındı (bkz. DURUM.md).
+ * WhatsApp tarafında artık Cloud API değil, ücretsiz WhatsApp Business
+ * uygulamasının "Karşılama mesajı" özelliği kullanılıyor: müşteriye siteye
+ * yönlendiren bir metin gidiyor, arada bizim kodumuz YOK.
+ *
+ * Sebebi mimari bir zorunluluktu: Cloud API bir numarayı devraldığında o
+ * numara WhatsApp uygulamasından çıkıyor. Berber kendi numarasını günlük
+ * hayatta kullanmaya devam etmek istediği için Cloud API kullanılamadı.
+ *
+ * Bu dosya BİLEREK silinmedi: ileride dükkana ayrı bir hat alınırsa
+ * çalışır durumda hazır. Kimlik bilgileri (`WHATSAPP_*`) girilmediği sürece
+ * `isWhatsAppConfigured` false kalıyor ve bot sahte istemciyle çalışıyor —
+ * yani şu an hiçbir şey göndermiyor, hiçbir şeyi bozmuyor.
+ *
+ * Testleri hâlâ geçiyor ve geçmeye devam etmeli; bozulursa yeniden
+ * açılabilir olduğunu bilmenin tek yolu o testler.
+ *
+ * ── Aşağısı, bot etkinken geçerli olan akış ───────────────────────
+ *
  * Akış (todo.md → "M6 — Chatbot"):
  *
  *   Ana menü → [ad sorma*] → berber → tarih → saat → hizmet → onay
