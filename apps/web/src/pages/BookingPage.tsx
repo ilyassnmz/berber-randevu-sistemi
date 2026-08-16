@@ -1,0 +1,484 @@
+import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { ChevronLeft, CalendarCheck, CalendarX2, AlertCircle, Check, Phone } from 'lucide-react';
+import { normalizePhone } from '@berber/shared';
+import { fetchShopInfo, fetchSlots, createAppointment, ApiError } from '../lib/api';
+import { storeToken, getStoredTokens } from '../lib/storage';
+import {
+  buildDateStrip,
+  formatDateChip,
+  formatDateLong,
+  formatPrice,
+  formatDuration,
+  formatAppointmentMoment,
+} from '../lib/dates';
+import type { CreatedAppointment } from '../lib/types';
+
+/**
+ * Randevu alma akışı.
+ *
+ * Sıra: hizmet → berber → gün ve saat → bilgiler → onay
+ *
+ * Tek berber varsa berber adımı atlanıyor — müşteriye seçeneksiz bir soru
+ * sormanın anlamı yok.
+ *
+ * ⚠️ Adımlar tarayıcı geçmişine YAZILMIYOR (router yerine state). Geri tuşu
+ * akışın ortasında sayfayı terk eder gibi görünebilirdi; onun yerine her
+ * adımda görünür bir "Geri" düğmesi var.
+ */
+
+type Step = 'service' | 'barber' | 'time' | 'details';
+
+const STEP_ORDER: Step[] = ['service', 'barber', 'time', 'details'];
+
+export default function BookingPage() {
+  const shopQuery = useQuery({ queryKey: ['shop'], queryFn: fetchShopInfo });
+
+  const [step, setStep] = useState<Step>('service');
+  const [serviceId, setServiceId] = useState<string | null>(null);
+  const [barberId, setBarberId] = useState<string | null>(null);
+  const [date, setDate] = useState<string | null>(null);
+  const [startsAt, setStartsAt] = useState<string | null>(null);
+  const [customerName, setCustomerName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [created, setCreated] = useState<CreatedAppointment | null>(null);
+
+  const info = shopQuery.data;
+  const services = info?.services ?? [];
+  const barbers = info?.barbers ?? [];
+  const timezone = info?.shop.timezone ?? 'Europe/Istanbul';
+
+  const service = services.find((s) => s.id === serviceId) ?? null;
+  const barber = barbers.find((b) => b.id === barberId) ?? null;
+
+  // Tarih şeridi: bugün + sunucunun izin verdiği kadar ileri gün.
+  // Sınır burada sabit yazılmıyor; kaynağı veritabanı.
+  const dateStrip = info ? buildDateStrip(timezone, info.shop.maxAdvanceDays + 1) : [];
+  const activeDate = date ?? dateStrip[0] ?? null;
+
+  const slotsQuery = useQuery({
+    queryKey: ['slots', barberId, serviceId, activeDate],
+    queryFn: () => fetchSlots(barberId!, serviceId!, activeDate!),
+    enabled: step === 'time' && Boolean(barberId && serviceId && activeDate),
+  });
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      createAppointment({
+        barberId: barberId!,
+        serviceId: serviceId!,
+        startsAt: startsAt!,
+        customerName: customerName.trim(),
+        customerPhone: phone.trim(),
+      }),
+    onSuccess: (result) => {
+      storeToken(result.token);
+      setCreated(result);
+    },
+    onError: (error) => {
+      setFormError(
+        error instanceof ApiError ? error.message : 'Randevu oluşturulamadı. Tekrar deneyin.',
+      );
+    },
+  });
+
+  function handleServicePick(id: string) {
+    setServiceId(id);
+    // Saat listesi hizmetin süresine bağlı; hizmet değişince seçili saat
+    // artık geçerli olmayabilir.
+    setStartsAt(null);
+
+    if (barbers.length === 1) {
+      setBarberId(barbers[0]!.id);
+      setStep('time');
+      return;
+    }
+    setStep('barber');
+  }
+
+  function handleBarberPick(id: string) {
+    setBarberId(id);
+    setStartsAt(null);
+    setStep('time');
+  }
+
+  function goBack() {
+    if (step === 'details') return setStep('time');
+    if (step === 'time') return setStep(barbers.length === 1 ? 'service' : 'barber');
+    if (step === 'barber') return setStep('service');
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setFormError(null);
+
+    if (customerName.trim().length < 2) {
+      setFormError('Lütfen adınızı ve soyadınızı yazın.');
+      return;
+    }
+
+    // Sunucu zaten doğruluyor; buradaki kontrol, müşteriyi bir gidiş-dönüş
+    // beklemeden uyarmak için. Aynı fonksiyon (@berber/shared) kullanıldığı
+    // için iki taraf asla ayrışmıyor.
+    if (!normalizePhone(phone)) {
+      setFormError('Telefon numaranızı 05XX XXX XX XX biçiminde yazın.');
+      return;
+    }
+
+    mutation.mutate();
+  }
+
+  function startOver() {
+    setCreated(null);
+    setStep('service');
+    setServiceId(null);
+    setBarberId(null);
+    setDate(null);
+    setStartsAt(null);
+    setCustomerName('');
+    setPhone('');
+    setFormError(null);
+  }
+
+  // ── Yükleniyor / hata ──────────────────────────────────
+
+  if (shopQuery.isLoading) {
+    return (
+      <div className="page">
+        <div className="loading-center">
+          <div className="spinner" />
+        </div>
+      </div>
+    );
+  }
+
+  if (shopQuery.isError || !info) {
+    return (
+      <div className="page">
+        <div className="state-message">
+          <AlertCircle size={30} strokeWidth={1.5} aria-hidden />
+          <span>
+            Randevu sistemine şu anda ulaşılamıyor.
+            <br />
+            Lütfen birazdan tekrar deneyin.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Başarı ekranı ──────────────────────────────────────
+
+  if (created) {
+    return (
+      <div className="page">
+        <div className="result-icon result-icon-success">
+          <CalendarCheck size={30} aria-hidden />
+        </div>
+        <h1 className="result-title">Randevunuz alındı</h1>
+        <p className="result-text">
+          {formatAppointmentMoment(created.appointment.startsAt, timezone)}
+          <br />
+          {created.appointment.barberName} · {created.appointment.serviceName}
+        </p>
+
+        <div className="notice notice-info">
+          <AlertCircle size={17} aria-hidden />
+          <span>
+            Bu sayfayı kaydedin ya da aşağıdaki bağlantıyı not alın — randevunuzu
+            görüntülemek ve iptal etmek için gerekiyor.
+          </span>
+        </div>
+
+        <Link
+          to={`/randevu/${created.token}`}
+          className="btn btn-primary btn-block"
+          style={{ marginBottom: 10 }}
+        >
+          Randevumu görüntüle
+        </Link>
+
+        <button type="button" className="btn btn-secondary btn-block" onClick={startOver}>
+          Yeni randevu al
+        </button>
+
+        <Footer contactPhone={info.shop.contactPhone} />
+      </div>
+    );
+  }
+
+  // ── Akış ───────────────────────────────────────────────
+
+  const stepIndex = STEP_ORDER.indexOf(step);
+  const savedTokens = getStoredTokens();
+
+  return (
+    <div className="page">
+      <header className="site-header">
+        <h1>{info.shop.name}</h1>
+        <p>Online randevu</p>
+      </header>
+
+      <div className="steps" aria-hidden>
+        {STEP_ORDER.filter((s) => !(s === 'barber' && barbers.length === 1)).map((s) => (
+          <span
+            key={s}
+            className="step-dot"
+            data-state={
+              STEP_ORDER.indexOf(s) < stepIndex
+                ? 'done'
+                : STEP_ORDER.indexOf(s) === stepIndex
+                  ? 'active'
+                  : 'todo'
+            }
+          />
+        ))}
+      </div>
+
+      {step !== 'service' && (
+        <button type="button" className="btn-back" onClick={goBack}>
+          <ChevronLeft size={17} aria-hidden /> Geri
+        </button>
+      )}
+
+      {/* ── 1. Hizmet ── */}
+      {step === 'service' && (
+        <>
+          {savedTokens.length > 0 && (
+            <Link to={`/randevu/${savedTokens[0]}`} className="notice notice-info">
+              <CalendarCheck size={17} aria-hidden />
+              <span>Daha önce aldığınız randevuyu görüntülemek için dokunun.</span>
+            </Link>
+          )}
+
+          <h2 className="step-title">Hangi hizmeti istiyorsunuz?</h2>
+          <p className="step-hint">Süre ve ücret bilgisi aşağıda.</p>
+
+          {services.length === 0 ? (
+            <div className="state-message">
+              <CalendarX2 size={30} strokeWidth={1.5} aria-hidden />
+              <span>Şu anda tanımlı hizmet yok. Lütfen bizi arayın.</span>
+            </div>
+          ) : (
+            <div className="option-list">
+              {services.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="option-card"
+                  aria-pressed={serviceId === s.id}
+                  onClick={() => handleServicePick(s.id)}
+                >
+                  <span>
+                    <span className="option-name">{s.name}</span>
+                    <span className="option-meta">{formatDuration(s.durationMin)}</span>
+                  </span>
+                  {formatPrice(s.price) && (
+                    <span className="option-price">{formatPrice(s.price)}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── 2. Berber ── */}
+      {step === 'barber' && (
+        <>
+          <h2 className="step-title">Hangi ustamızla?</h2>
+          <p className="step-hint">{service?.name}</p>
+
+          <div className="option-list">
+            {barbers.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className="option-card"
+                aria-pressed={barberId === b.id}
+                onClick={() => handleBarberPick(b.id)}
+              >
+                <span className="option-name">{b.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── 3. Gün ve saat ── */}
+      {step === 'time' && (
+        <>
+          <h2 className="step-title">Gün ve saat seçin</h2>
+          <p className="step-hint">
+            {service?.name}
+            {barber ? ` · ${barber.name}` : ''}
+          </p>
+
+          <div className="date-strip" role="group" aria-label="Gün seçimi">
+            {dateStrip.map((d) => {
+              const chip = formatDateChip(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  className="date-chip"
+                  aria-pressed={activeDate === d}
+                  aria-label={formatDateLong(d)}
+                  onClick={() => {
+                    setDate(d);
+                    setStartsAt(null);
+                  }}
+                >
+                  <span className="date-chip-weekday">{chip.weekday}</span>
+                  <span className="date-chip-day">{chip.day}</span>
+                  <span className="date-chip-month">{chip.month}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {slotsQuery.isLoading && (
+            <div className="loading-center">
+              <div className="spinner" />
+            </div>
+          )}
+
+          {slotsQuery.isError && (
+            <div className="notice notice-error">
+              <AlertCircle size={17} aria-hidden />
+              <span>Saatler yüklenemedi. Lütfen tekrar deneyin.</span>
+            </div>
+          )}
+
+          {slotsQuery.data && slotsQuery.data.slots.length === 0 && (
+            <div className="state-message">
+              <CalendarX2 size={30} strokeWidth={1.5} aria-hidden />
+              <span>
+                Bu gün için uygun saat kalmamış.
+                <br />
+                Başka bir gün seçebilirsiniz.
+              </span>
+            </div>
+          )}
+
+          {slotsQuery.data && slotsQuery.data.slots.length > 0 && (
+            <div className="slot-grid">
+              {slotsQuery.data.slots.map((slot) => (
+                <button
+                  key={slot.startsAt}
+                  type="button"
+                  className="slot-btn"
+                  aria-pressed={startsAt === slot.startsAt}
+                  onClick={() => {
+                    setStartsAt(slot.startsAt);
+                    setStep('details');
+                  }}
+                >
+                  {slot.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── 4. Bilgiler ve onay ── */}
+      {step === 'details' && (
+        <>
+          <h2 className="step-title">Son adım</h2>
+          <p className="step-hint">Randevunuzu size bağlayabilmemiz için.</p>
+
+          <div className="summary">
+            <div className="summary-row">
+              <span>Hizmet</span>
+              <span>
+                {service?.name}
+                {formatPrice(service?.price ?? null) ? ` · ${formatPrice(service!.price)}` : ''}
+              </span>
+            </div>
+            <div className="summary-row">
+              <span>Usta</span>
+              <span>{barber?.name}</span>
+            </div>
+            <div className="summary-row">
+              <span>Tarih ve saat</span>
+              <span>{startsAt ? formatAppointmentMoment(startsAt, timezone) : '—'}</span>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <label className="field">
+              <span>Ad Soyad</span>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                autoComplete="name"
+                maxLength={120}
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Telefon</span>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                autoComplete="tel"
+                placeholder="05XX XXX XX XX"
+                inputMode="tel"
+                required
+              />
+              <span className="field-hint">
+                Randevunuzla ilgili bir durum olursa berberimiz buradan ulaşacak.
+              </span>
+            </label>
+
+            {formError && (
+              <div className="notice notice-error" role="alert">
+                <AlertCircle size={17} aria-hidden />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-block"
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending ? (
+                <span className="spinner" />
+              ) : (
+                <>
+                  <Check size={17} aria-hidden /> Randevuyu onayla
+                </>
+              )}
+            </button>
+          </form>
+        </>
+      )}
+
+      <Footer contactPhone={info.shop.contactPhone} />
+    </div>
+  );
+}
+
+function Footer({ contactPhone }: { contactPhone: string | null }) {
+  return (
+    <footer className="site-footer">
+      {contactPhone ? (
+        <p>
+          Sorunuz mu var?{' '}
+          <a href={`tel:${contactPhone}`}>
+            <Phone size={13} aria-hidden /> {contactPhone}
+          </a>
+        </p>
+      ) : (
+        <p>Özdede Hair Studio</p>
+      )}
+    </footer>
+  );
+}

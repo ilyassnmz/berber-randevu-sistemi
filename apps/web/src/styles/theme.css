@@ -1,0 +1,127 @@
+/**
+ * Tema — panelle aynı renk paleti.
+ *
+ * ⚠️ Panelden bir fark var: burada tema SEÇİLMİYOR, cihazın tercihine
+ * uyuluyor (`prefers-color-scheme`). Panelde bir tema düğmesi ve
+ * localStorage var; müşteri sitesinde bunlar gereksiz karmaşa olurdu —
+ * ayrıca `data-theme`'i JS ile basmak, sayfanın ilk anında yanlış temanın
+ * görünmesi (flash) riskini getiriyor. Medya sorgusu bunu tarayıcı
+ * seviyesinde, JS'siz çözüyor.
+ */
+
+:root {
+  --bg: #f7f6f2;
+  --surface: #ffffff;
+  --surface-raised: #efece3;
+  --border: #e4e1d8;
+  --text: #232220;
+  --text-dim: #6b6862;
+  --text-faint: #9a968c;
+
+  --accent: #92660a;
+  --accent-text: #fdf8ec;
+
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.1);
+  --success: #15803d;
+  --success-bg: rgba(21, 128, 61, 0.1);
+
+  --radius: 14px;
+  --radius-sm: 10px;
+  --tap-min: 44px;
+
+  --font: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f0f17;
+    --surface: #1a1a26;
+    --surface-raised: #22222f;
+    --border: #313142;
+    --text: #f4f4f6;
+    --text-dim: #9a9aac;
+    --text-faint: #64647a;
+
+    --accent: #e2b93b;
+    --accent-text: #151521;
+
+    --danger: #e05a5a;
+    --danger-bg: rgba(224, 90, 90, 0.12);
+    --success: #4caf7d;
+    --success-bg: rgba(76, 175, 125, 0.12);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 16px; /* iOS Safari 16px altında input'a zoom yapar */
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
