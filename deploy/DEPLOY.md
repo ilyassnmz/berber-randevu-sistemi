@@ -73,10 +73,17 @@ nano .env   # DOMAIN, PANEL_DOMAIN, DATABASE_URL, JWT_ACCESS_SECRET,
 birden** açılmaz:
 
 ```bash
-docker compose run --rm caddy caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -v /opt/ozdede/deploy/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -e DOMAIN=ozdedehairstudio.com -e PANEL_DOMAIN=panel.ozdedehairstudio.com \
+  caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-Sorun yoksa:
+⚠️ `docker compose run --rm caddy caddy validate` KULLANMAYIN. Caddyfile
+imaja build sırasında kopyalandığı için o komut imajdaki ESKİ dosyayı
+doğrular; yeni dosyada hata olsa bile "Valid configuration" der. Yukarıdaki
+komut yeni dosyayı temiz bir konteynere bağladığı için gerçekten onu sınar.
+
+Beklenen çıktı: `Valid configuration`. Sorun yoksa:
 
 ```bash
 docker compose up -d --build
