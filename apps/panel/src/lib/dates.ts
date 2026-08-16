@@ -72,6 +72,23 @@ export function isToday(date: string): boolean {
   return date === todayLocalDate();
 }
 
+/** ISO an → o anın DÜKKAN saatindeki günü: "2026-08-17" */
+export function isoToLocalDate(iso: string): string {
+  const p = zonedParts(new Date(iso));
+  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+}
+
+/** "2026-08-17" → "Bugün" / "Yarın" / "17 Ağu" — dar alanlar için. */
+export function formatDateShortTr(date: string): string {
+  if (date === todayLocalDate()) return 'Bugün';
+  if (date === addDaysToDate(todayLocalDate(), 1)) return 'Yarın';
+
+  const [y, m, d] = date.split('-').map(Number);
+  const noon = new Date(Date.UTC(y!, m! - 1, d!, 12));
+  const p = zonedParts(noon);
+  return `${p.day} ${MONTH_NAMES[p.month - 1]!.slice(0, 3)}`;
+}
+
 /**
  * Bir yerel günün tamamını (00:00-23:59:59) UTC ISO aralığına çevirir.
  * Türkiye kalıcı UTC+3 (2016'dan beri yaz saati yok) — bu yüzden sabit

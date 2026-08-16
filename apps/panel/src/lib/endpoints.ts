@@ -56,6 +56,9 @@ export function updateService(
 export function fetchAppointments(params: {
   barberId?: string;
   date?: string;
+  /** `date` yerine tarih ARALIĞI. Yaklaşan randevu şeridi bunu kullanıyor. */
+  from?: string;
+  to?: string;
   status?: AppointmentStatus;
 }) {
   return apiRequest<{ items: Appointment[]; nextCursor: string | null }>('/appointments', {

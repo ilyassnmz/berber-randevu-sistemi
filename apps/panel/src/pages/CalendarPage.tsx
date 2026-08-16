@@ -6,6 +6,7 @@ import { fetchAppointments, fetchBarbers, fetchServices, fetchSlots } from '../l
 import { todayLocalDate } from '../lib/dates';
 import type { Appointment, Slot } from '../lib/types';
 import { DateNav } from '../components/DateNav';
+import { UpcomingStrip } from '../components/UpcomingStrip';
 import { AppointmentCard } from '../components/AppointmentCard';
 import { SlotCard } from '../components/SlotCard';
 import { WalkInModal } from '../components/WalkInModal';
@@ -103,6 +104,10 @@ export default function CalendarPage() {
       )}
 
       <DateNav date={date} onChange={setDate} />
+
+      {activeBarberId && (
+        <UpcomingStrip barberId={activeBarberId} selectedDate={date} onPick={setDate} />
+      )}
 
       {isLoading && (
         <div className="loading-center">

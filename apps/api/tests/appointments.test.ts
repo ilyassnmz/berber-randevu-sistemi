@@ -792,3 +792,79 @@ describe('İleri tarih sınırı yalnızca müşteri tarafına uygulanır', () =
     expect(res.body.slots.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Tarih ARALIĞI filtresi (from/to).
+ *
+ * Panelin "yaklaşan randevular" şeridi buna dayanıyor: takvim yalnızca
+ * seçili günü gösterdiği için, başka günlerdeki randevular ancak bu
+ * filtreyle yüzeye çıkıyor.
+ *
+ * Filtre kodda vardı ama HİÇ test edilmemişti — ve gerçek bir arıza tam
+ * buradan çıktı: siteden yarına alınan randevular panelde görünmüyordu,
+ * çünkü panel yalnızca bugünü sorguluyordu.
+ */
+describe('GET / — tarih aralığı (from/to) filtresi', () => {
+  function gunEkle(days: number): string {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  const gunA = gunEkle(2);
+  const gunB = gunEkle(4);
+  const gunC = gunEkle(6);
+
+  async function randevuAc(date: string, saat = '09:00') {
+    // Kaynak 'panel': berber olarak oluşturuluyor, böylece müşteri
+    // kısıtları (7 gün penceresi, aynı güne ikinci randevu) devreye girmiyor.
+    return createAppointment({
+      shopId: fx.shopId,
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: zonedTimeToUtc(date, saat, TZ),
+      customerName: 'Aralık Testi',
+      source: 'panel',
+    });
+  }
+
+  it('aralıktaki tüm günlerin randevularını döner', async () => {
+    await randevuAc(gunA);
+    await randevuAc(gunB);
+    await randevuAc(gunC);
+
+    const res = await request(app)
+      .get(BASE)
+      .query({ barberId: fx.adminId, from: gunA, to: gunC })
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(3);
+  });
+
+  it('aralık dışındaki günü DIŞARIDA bırakır', async () => {
+    await randevuAc(gunA);
+    await randevuAc(gunC);
+
+    const res = await request(app)
+      .get(BASE)
+      .query({ barberId: fx.adminId, from: gunA, to: gunB })
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+  });
+
+  it('bitiş günü aralığa DAHİL', async () => {
+    // Sınır davranışı: "to" günü dışarıda kalsaydı, şerit haftanın son
+    // gününü hiç göstermezdi.
+    await randevuAc(gunB);
+
+    const res = await request(app)
+      .get(BASE)
+      .query({ barberId: fx.adminId, from: gunA, to: gunB })
+      .set(auth(adminToken));
+
+    expect(res.body.items).toHaveLength(1);
+  });
+});
