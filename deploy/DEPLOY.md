@@ -1,16 +1,32 @@
 # Dağıtım Kılavuzu — Hetzner
 
-Bu doküman, sunucu ve domain hazır olduğunda izlenecek adımları anlatır.
-**Sıra önemli**: WhatsApp bağlantısı en son yapılır — buradaki hiçbir adım
-Meta hesabına ihtiyaç duymaz.
+Sistem **iki ayrı adres** sunuyor, ikisi de aynı sunucudaki tek Caddy'den:
+
+| Adres | Ne? |
+|---|---|
+| `ozdedehairstudio.com` | Müşteri randevu sitesi (`apps/web`) |
+| `panel.ozdedehairstudio.com` | Berber paneli (`apps/panel`) |
+
+> ℹ️ WhatsApp Cloud API **kullanılmıyor**. Randevu alma siteye taşındı;
+> WhatsApp tarafı kod gerektirmiyor (bkz. [`WHATSAPP-KURULUM.md`](../WHATSAPP-KURULUM.md)).
+> Bu kılavuzdaki hiçbir adım Meta hesabına ihtiyaç duymaz.
 
 ## Ön koşullar (kullanıcı tarafından hazırlanır)
 
 - [ ] Hetzner'de bir CX22 sunucu (Ubuntu 24.04), IP adresi elde
 - [ ] Bir domain satın alındı
-- [ ] Domain'in DNS ayarlarında **A kaydı** → sunucunun IP'sine yönlendirildi
-      (yayılması birkaç dakika-birkaç saat sürebilir; `nslookup domain.com`
-      ile IP'nin doğru döndüğü teyit edilir)
+- [ ] **İKİ A kaydı** sunucunun IP'sine yönlendirildi:
+
+      Tip: A   Ad: @       Değer: <sunucu IP>     → müşteri sitesi
+      Tip: A   Ad: panel   Değer: <sunucu IP>     → berber paneli
+
+      Yayılması birkaç dakika-birkaç saat sürebilir. İkisi de
+      `nslookup` ile teyit edilmeli.
+
+      ⚠️ `panel` kaydı OLMADAN dağıtım yapılmamalı: kök adres artık
+      müşteri sitesini sunduğu için berberler panele tamamen erişemez
+      hale gelir. Ayrıca Caddy o alan adı için sertifika alamaz.
+
 - [ ] Neon veritabanı zaten var (geliştirmede kullanılan aynısı — ayrı bir
       üretim veritabanı gerekmiyor, tek dükkanlı sistemde aynısı kullanılabilir)
 
@@ -46,28 +62,53 @@ usermod -aG docker deploy
 git clone <repo-url> /opt/ozdede
 cd /opt/ozdede
 cp deploy/.env.example .env
-nano .env   # DOMAIN, DATABASE_URL, JWT_ACCESS_SECRET doldurulur
-            # WHATSAPP_* alanları BOŞ BIRAKILIR
+nano .env   # DOMAIN, PANEL_DOMAIN, DATABASE_URL, JWT_ACCESS_SECRET,
+            # CORS_ORIGIN (iki adres de) doldurulur
+            # WHATSAPP_* alanları BOŞ BIRAKILIR — Cloud API kullanılmıyor
 ```
 
 ## 4. Ayağa kaldır
 
+Önce Caddy yapılandırmasını doğrula — sözdizimi hatası varsa **iki site
+birden** açılmaz:
+
+```bash
+docker compose run --rm caddy caddy validate --config /etc/caddy/Caddyfile
+```
+
+Sorun yoksa:
+
 ```bash
 docker compose up -d --build
-docker compose logs -f api   # açılış loglarını izle
+docker compose logs -f caddy   # sertifika alımını izle
 ```
 
 ## 5. Doğrula
 
+Her iki adres de ayrı ayrı kontrol edilmeli:
+
 ```bash
-curl https://<domain>/healthz   # {"status":"ok",...}
-curl https://<domain>/readyz    # {"status":"ok","checks":{"database":"ok"}}
-curl https://<domain>/gizlilik  # gizlilik politikası HTML'i
+# Müşteri sitesi
+curl https://ozdedehairstudio.com/readyz               # database: ok
+curl https://ozdedehairstudio.com/api/v1/public/shop   # hizmet ve berber listesi
+curl https://ozdedehairstudio.com/gizlilik             # KVKK sayfası
+
+# Berber paneli
+curl https://panel.ozdedehairstudio.com/readyz
+curl -I https://panel.ozdedehairstudio.com/            # 200, text/html
 ```
 
-Tarayıcıdan `https://<domain>` açılıp panelin yüklendiği, giriş yapılabildiği
-kontrol edilir. HTTPS sertifikası Caddy tarafından otomatik alınır — ilk
-istekte birkaç saniye gecikme normaldir.
+Tarayıcıdan:
+
+- `https://ozdedehairstudio.com` → randevu akışı açılmalı, hizmetler listelenmeli
+- `https://panel.ozdedehairstudio.com` → giriş ekranı açılmalı, giriş yapılabilmeli
+
+HTTPS sertifikaları Caddy tarafından otomatik alınır — ilk istekte birkaç
+saniye gecikme normaldir. **İki alan adı için iki ayrı sertifika alınır**,
+`panel` için DNS kaydı yoksa o site sertifikasız kalır ve açılmaz.
+
+⚠️ Berberlerin telefonundaki eski panel kısayolu (PWA) artık müşteri
+sitesini açar. Yeni adresten tekrar "Ana ekrana ekle" yapmaları gerekir.
 
 ## 6. Yedekleme
 
@@ -89,17 +130,41 @@ yedek değildir.
 
 ## 7. Güncelleme (sonraki değişikliklerde)
 
+⚠️ **`git pull` ÇALIŞMAZ — sunucuda git kurulu değil.** Dosyalar geliştirme
+makinesinden `scp` ile gönderilir:
+
 ```bash
-cd /opt/ozdede
-git pull
-docker compose up -d --build
+# Geliştirme makinesinde, repo kökünde
+scp -i ~/.ssh/id_ed25519 -r \
+    apps/api/src apps/web/src apps/panel/src packages/shared/src \
+    deploy docker-compose.yml \
+    deploy@2.28.63.218:/opt/ozdede/
+
+# Sonra sunucuda
+ssh -i ~/.ssh/id_ed25519 deploy@2.28.63.218 \
+    'cd /opt/ozdede && docker compose up -d --build'
 ```
 
-## 8. WhatsApp bağlantısı — EN SON ADIM
+Yalnızca ön yüz değiştiyse `--build caddy`, yalnızca backend değiştiyse
+`--build api` yeterli — tam build birkaç dakika sürüyor.
 
-Yukarıdaki her şey çalışır durumdayken, ve yalnızca o zaman:
+Veritabanı şeması değiştiyse migration AYRICA uygulanmalı:
 
-1. Meta hesabı ve şablonlar hazırlanır (bkz. ana `README.md`)
-2. `.env` dosyasına 4 WhatsApp değişkeni girilir
-3. `docker compose up -d` (yeniden build gerekmez, sadece yeniden başlatma)
-4. Meta panelinde webhook adresi: `https://<domain>/webhook/whatsapp`
+```bash
+cd apps/api && npx prisma migrate deploy   # geliştirme makinesinden
+```
+
+(Neon dışarıdan erişilebilir olduğu için sunucuda çalıştırmaya gerek yok.)
+
+## 8. WhatsApp
+
+Kod tarafında **yapılacak bir şey yok** — Cloud API kullanılmıyor.
+
+Berberin telefonunda WhatsApp Business uygulamasının karşılama mesajı
+ayarlanır: [`WHATSAPP-KURULUM.md`](../WHATSAPP-KURULUM.md).
+
+`.env` içindeki `WHATSAPP_*` alanları boş kaldığı sürece bot sahte
+istemciyle çalışır, hiçbir mesaj göndermez ve hiçbir şeyi bozmaz. İleride
+dükkana ayrı bir hat alınırsa bu alanlar doldurulup
+`docker compose up -d` demek yeterli (yeniden build gerekmez); webhook
+adresi `https://ozdedehairstudio.com/webhook/whatsapp` olarak duruyor.
