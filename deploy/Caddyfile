@@ -41,7 +41,10 @@
 	}
 }
 
-(spa_headers) {
+# Tek sayfa uygulaması sunumu. Argüman: kök dizin.
+#     import spa_site /srv/web
+(spa_site) {
+	root * {args[0]}
 	encode gzip
 
 	header {
@@ -57,6 +60,34 @@
 	# istemeye devam eder ve site beyaz ekrana düşer.
 	@html path /index.html /
 	header @html Cache-Control "no-cache"
+
+	# Service worker da önbelleklenmemeli — güncellenmesi gereken İLK şey o.
+	@sw path /sw.js
+	header @sw Cache-Control "no-cache"
+
+	# ⚠️ Uzantılı dosyalar index.html'e DÜŞMEZ.
+	#
+	# Eskiden tek bir `try_files {path} /index.html` vardı ve olmayan HER
+	# dosya için 200 + HTML dönüyordu. Bu, gerçek bir arızaya yol açtı:
+	# kök adres eskiden panel PWA'sını sunuyordu, tarayıcılarda o PWA'nın
+	# service worker'ı kayıtlı kaldı. Service worker kendini güncellemek
+	# için /sw.js isteyince JavaScript yerine HTML aldı, güncelleme sessizce
+	# başarısız oldu ve ziyaretçiler yeni site yayına alındıktan sonra bile
+	# önbellekteki ESKİ paneli görmeye devam etti.
+	#
+	# Artık olmayan bir varlık düzgünce 404 dönüyor: hata görünür oluyor,
+	# sessizce yanlış içerik sunulmuyor.
+	@asset path *.js *.mjs *.css *.map *.json *.webmanifest *.txt *.xml *.png *.jpg *.jpeg *.svg *.ico *.gif *.webp *.woff *.woff2 *.ttf
+	handle @asset {
+		file_server
+	}
+
+	# Geri kalan her şey (gezinme istekleri) index.html'e düşer —
+	# /randevu/<anahtar> gibi adresler React Router'a devredilsin diye.
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -77,15 +108,7 @@
 		reverse_proxy api:3000
 	}
 
-	handle {
-		root * /srv/web
-		# SPA yönlendirmesi: /randevu/<anahtar> gibi bir adrese doğrudan
-		# girildiğinde (WhatsApp'tan gelen link, sayfa yenileme) 404 yerine
-		# index.html dönülür; React Router isteği oradan devralır.
-		try_files {path} /index.html
-		file_server
-		import spa_headers
-	}
+	import spa_site /srv/web
 
 	log {
 		output stdout
@@ -99,12 +122,7 @@
 {$PANEL_DOMAIN} {
 	import api_routes
 
-	handle {
-		root * /srv/panel
-		try_files {path} /index.html
-		file_server
-		import spa_headers
-	}
+	import spa_site /srv/panel
 
 	log {
 		output stdout
