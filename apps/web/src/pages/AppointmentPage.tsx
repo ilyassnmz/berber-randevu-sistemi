@@ -110,7 +110,7 @@ export default function AppointmentPage() {
           </div>
         )}
         <div className="summary-row">
-          <span>Usta</span>
+          <span>Berber</span>
           <span>{appointment.barberName}</span>
         </div>
         <div className="summary-row">

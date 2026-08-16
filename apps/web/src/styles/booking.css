@@ -14,6 +14,7 @@
 /* ─── Başlık ─────────────────────────────────────────── */
 
 .site-header {
+  position: relative;
   text-align: center;
   padding: 24px 0 20px;
 }
@@ -29,6 +30,50 @@
   margin: 6px 0 0;
   color: var(--text-dim);
   font-size: 14px;
+}
+
+/* Marka işareti: makas, iki yanında ince çizgi. Berber çağrışımını
+   arka plan şeritleriyle birlikte, metni kalabalıklaştırmadan veriyor. */
+.brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+
+.brand-mark::before,
+.brand-mark::after {
+  content: '';
+  width: 34px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border), transparent);
+}
+
+/* Tema düğmesi — başlığın sağ üstünde, akışı bozmadan. */
+.theme-toggle {
+  position: absolute;
+  top: 18px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ─── Adım göstergesi ────────────────────────────────── */

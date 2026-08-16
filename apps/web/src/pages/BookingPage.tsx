@@ -1,10 +1,21 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ChevronLeft, CalendarCheck, CalendarX2, AlertCircle, Check, Phone } from 'lucide-react';
+import {
+  ChevronLeft,
+  CalendarCheck,
+  CalendarX2,
+  AlertCircle,
+  Check,
+  Phone,
+  Scissors,
+  Sun,
+  Moon,
+} from 'lucide-react';
 import { normalizePhone } from '@berber/shared';
 import { fetchShopInfo, fetchSlots, createAppointment, ApiError } from '../lib/api';
 import { storeToken, getStoredTokens } from '../lib/storage';
+import { getStoredTheme, toggleTheme, type Theme } from '../lib/theme';
 import {
   buildDateStrip,
   formatDateChip,
@@ -44,6 +55,10 @@ export default function BookingPage() {
   const [phone, setPhone] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedAppointment | null>(null);
+
+  // Tema `<html data-theme>` üzerinden uygulanıyor; buradaki state yalnızca
+  // düğmenin doğru ikonu göstermesi için.
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
 
   const info = shopQuery.data;
   const services = info?.services ?? [];
@@ -217,6 +232,19 @@ export default function BookingPage() {
   return (
     <div className="page">
       <header className="site-header">
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setTheme(toggleTheme())}
+          aria-label={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+          title={theme === 'dark' ? 'Açık tema' : 'Koyu tema'}
+        >
+          {theme === 'dark' ? <Sun size={17} aria-hidden /> : <Moon size={17} aria-hidden />}
+        </button>
+
+        <div className="brand-mark">
+          <Scissors size={19} aria-hidden />
+        </div>
         <h1>{info.shop.name}</h1>
         <p>Online randevu</p>
       </header>
@@ -288,7 +316,7 @@ export default function BookingPage() {
       {/* ── 2. Berber ── */}
       {step === 'barber' && (
         <>
-          <h2 className="step-title">Hangi ustamızla?</h2>
+          <h2 className="step-title">Berberinizi seçin</h2>
           <p className="step-hint">{service?.name}</p>
 
           <div className="option-list">
@@ -399,7 +427,7 @@ export default function BookingPage() {
               </span>
             </div>
             <div className="summary-row">
-              <span>Usta</span>
+              <span>Berber</span>
               <span>{barber?.name}</span>
             </div>
             <div className="summary-row">

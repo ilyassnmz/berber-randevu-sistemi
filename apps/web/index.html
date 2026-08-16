@@ -24,6 +24,25 @@
 
     <link rel="icon" href="/favicon.png" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <script>
+      // React yüklenmeden ÖNCE doğru temayı basar — aksi halde her açılışta
+      // bir an yanlış tema görünüp doğrusuna geçer (flash of wrong theme).
+      // src/lib/theme.ts'teki mantıkla aynı; modül yüklenmeden çalışması
+      // gerektiği için burada (küçük bir) tekrar kaçınılmaz.
+      (function () {
+        var stored = localStorage.getItem('ozdede-web-theme');
+        var theme =
+          stored === 'dark' || stored === 'light'
+            ? stored
+            : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        document.documentElement.dataset.theme = theme;
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f0f17' : '#f7f6f2');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

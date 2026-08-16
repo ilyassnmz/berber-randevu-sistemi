@@ -1,15 +1,26 @@
 /**
- * Tema — panelle aynı renk paleti.
+ * Tema — panelle AYNI palet ve AYNI mekanizma.
  *
- * ⚠️ Panelden bir fark var: burada tema SEÇİLMİYOR, cihazın tercihine
- * uyuluyor (`prefers-color-scheme`). Panelde bir tema düğmesi ve
- * localStorage var; müşteri sitesinde bunlar gereksiz karmaşa olurdu —
- * ayrıca `data-theme`'i JS ile basmak, sayfanın ilk anında yanlış temanın
- * görünmesi (flash) riskini getiriyor. Medya sorgusu bunu tarayıcı
- * seviyesinde, JS'siz çözüyor.
+ * Seçim `<html data-theme="...">` ile uygulanıyor, `lib/theme.ts` yönetiyor
+ * ve localStorage'da saklanıyor. index.html'deki küçük betik React
+ * yüklenmeden önce doğru temayı basıyor, böylece açılışta yanlış tema
+ * görünüp doğrusuna geçmiyor (flash of wrong theme).
+ *
+ * Panelden tek fark: kayıt yoksa cihazın tercihine düşülüyor
+ * (bkz. lib/theme.ts → getStoredTheme).
  */
 
 :root {
+  /**
+   * Tarayıcıya "bu sayfanın teması şu" demenin tek yolu.
+   *
+   * Olmadığında tarayıcı, KENDİ tercihine göre çiziyor: input kutuları,
+   * kaydırma çubuğu, metin imleci ve otomatik doldurma rengi. Cihazı koyu
+   * modda olan bir müşteri sitede açık temayı seçtiğinde, sayfa açık ama
+   * form kutuları koyu kalırdı.
+   */
+  color-scheme: light;
+
   --bg: #f7f6f2;
   --surface: #ffffff;
   --surface-raised: #efece3;
@@ -31,26 +42,36 @@
   --tap-min: 44px;
 
   --font: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Arka plan süslemesi (berber direği şeritleri ve ışık huzmeleri).
+     Çok düşük opaklık: dokunun okunabilirliği bozmaması şart. */
+  --deco-stripe: rgba(146, 102, 10, 0.055);
+  --deco-glow: rgba(146, 102, 10, 0.09);
+  --deco-glow-2: rgba(37, 99, 235, 0.05);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f0f17;
-    --surface: #1a1a26;
-    --surface-raised: #22222f;
-    --border: #313142;
-    --text: #f4f4f6;
-    --text-dim: #9a9aac;
-    --text-faint: #64647a;
+:root[data-theme='dark'] {
+  color-scheme: dark;
 
-    --accent: #e2b93b;
-    --accent-text: #151521;
+  --bg: #0f0f17;
+  --surface: #1a1a26;
+  --surface-raised: #22222f;
+  --border: #313142;
+  --text: #f4f4f6;
+  --text-dim: #9a9aac;
+  --text-faint: #64647a;
 
-    --danger: #e05a5a;
-    --danger-bg: rgba(224, 90, 90, 0.12);
-    --success: #4caf7d;
-    --success-bg: rgba(76, 175, 125, 0.12);
-  }
+  --accent: #e2b93b;
+  --accent-text: #151521;
+
+  --danger: #e05a5a;
+  --danger-bg: rgba(224, 90, 90, 0.12);
+  --success: #4caf7d;
+  --success-bg: rgba(76, 175, 125, 0.12);
+
+  --deco-stripe: rgba(226, 185, 59, 0.04);
+  --deco-glow: rgba(226, 185, 59, 0.07);
+  --deco-glow-2: rgba(76, 139, 245, 0.05);
 }
 
 * {
@@ -69,6 +90,50 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+/**
+ * ── Arka plan süslemesi ───────────────────────────────────────────
+ *
+ * İki sabit katman, ikisi de `pointer-events: none` ve negatif z-index —
+ * hiçbir tıklamayı ya da metni engellemiyor.
+ *
+ * Görsel değil CSS: berber direği şeridi tekrar eden bir gradyan, ışık
+ * huzmeleri radyal gradyan. Böylece indirilecek dosya yok, her ekran
+ * çözünürlüğünde net ve iki temada da paletle uyumlu.
+ */
+
+/* Işık huzmeleri — üstte ve sağ altta yumuşak parlama. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 45% at 50% -8%, var(--deco-glow), transparent 70%),
+    radial-gradient(55% 35% at 105% 105%, var(--deco-glow-2), transparent 70%);
+}
+
+/* Berber direği: eğik şeritler, yukarıdan aşağı sönümlenerek. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--deco-stripe) 0 10px,
+    transparent 10px 30px
+  );
+  /* Şeritler yalnızca üst bölgede görünsün: sayfanın ortasında devam
+     etselerdi kartların ve metnin arkasında gürültü yaratırlardı. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 42%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 42%);
 }
 
 button,
