@@ -120,6 +120,9 @@ publicRouter.post(
       startsAt: new Date(input.startsAt),
       customerName: input.customerName,
       customerPhone: input.customerPhone,
+      // Aynı cihazdan sahte numaralarla takvim doldurmayı engelleyen kural
+      // bunu kullanıyor (bkz. services/public-booking.ts).
+      clientIp: req.ip,
     });
 
     res.status(201).json({

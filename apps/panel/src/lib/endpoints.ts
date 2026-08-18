@@ -180,3 +180,28 @@ export function fetchStats(params: { from: string; to: string; barberId?: string
 export function fetchCustomer(customerId: string) {
   return apiRequest<{ customer: CustomerDetail }>(`/customers/${customerId}`);
 }
+
+/**
+ * Aynı cihazdan gelen diğer gelecek randevular.
+ *
+ * Sahte numaralarla takvim doldurma girişiminde randevular farklı isim ve
+ * numaralarla, farklı günlere dağılmış oluyor; tek ortak noktaları cihaz.
+ */
+export function fetchSiblingAppointments(appointmentId: string) {
+  return apiRequest<{
+    items: Array<{
+      id: string;
+      startsAt: string;
+      customerName: string | null;
+      barberName: string;
+      serviceName: string;
+    }>;
+  }>(`/appointments/${appointmentId}/siblings`);
+}
+
+/** Aynı cihazdan gelen gelecek randevuların tamamını iptal eder. */
+export function cancelSiblingAppointments(appointmentId: string) {
+  return apiRequest<{ cancelled: number }>(`/appointments/${appointmentId}/cancel-siblings`, {
+    method: 'POST',
+  });
+}

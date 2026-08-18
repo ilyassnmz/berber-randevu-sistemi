@@ -334,6 +334,19 @@ model Appointment {
   /// vermemeli. Yalnızca `web` kaynaklı randevularda dolu olur.
   publicToken String? @unique @map("public_token")
 
+  /// Randevuyu oluşturan istemcinin IP adresinin HMAC özeti.
+  ///
+  /// ⚠️ IP'nin kendisi SAKLANMAZ — geri döndürülemez bir özet tutulur.
+  /// Amaç kimlik tespiti değil, yalnızca "bu randevular aynı yerden mi
+  /// geldi?" sorusunu cevaplamak:
+  ///   1. Aynı cihazdan günde en fazla 3 FARKLI numaraya randevu alınabilsin
+  ///      (sahte numaralarla takvimi doldurma girişimini durdurur).
+  ///   2. Saldırı olursa berber hepsini tek işlemle iptal edebilsin.
+  ///
+  /// Yalnızca web kaynaklı randevularda dolu; panelden girilen randevular
+  /// bu kısıtlara tabi değil.
+  clientHash String? @map("client_hash")
+
   /// pending_confirm durumundaki randevu bu andan sonra otomatik düşer.
   confirmDeadline DateTime? @map("confirm_deadline") @db.Timestamptz(3)
 
@@ -349,6 +362,8 @@ model Appointment {
   @@index([customerId, startsAt(sort: Desc)])
   @@index([shopId, startsAt])
   @@index([status, confirmDeadline])
+  /// Aynı cihazdan gelen randevuları hızlı bulmak için (sınır + toplu iptal).
+  @@index([shopId, clientHash, startsAt])
   @@map("appointments")
 }
 

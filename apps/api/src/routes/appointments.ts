@@ -18,6 +18,8 @@ import {
   rescheduleAppointment,
   listAppointments,
   getAppointment,
+  findSiblingAppointments,
+  cancelSiblingAppointments,
 } from '../services/appointments.js';
 import { ValidationError } from '../lib/errors.js';
 import { getIdempotentResponse, saveIdempotentResponse } from '../services/idempotency.js';
@@ -229,5 +231,46 @@ appointmentsRouter.post(
     );
 
     res.json({ appointment });
+  }),
+);
+
+/**
+ * Aynı cihazdan gelen diğer gelecek randevular.
+ *
+ * Panel, randevu detayında "bu cihazdan N randevu daha var" uyarısını
+ * buradan alıyor. Sahte numaralarla takvim doldurma girişimini görünür
+ * kılmanın tek yolu bu — numaralar ve isimler farklı, ortak nokta cihaz.
+ */
+appointmentsRouter.get(
+  '/:id/siblings',
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const items = await findSiblingAppointments(auth.shopId, req.params.id!, auth);
+
+    res.json({
+      items: items.map((a) => ({
+        id: a.id,
+        startsAt: a.startsAt.toISOString(),
+        customerName: a.customer.name,
+        barberName: a.barber.name,
+        serviceName: a.service.name,
+      })),
+    });
+  }),
+);
+
+/** Aynı cihazdan gelen gelecek randevuların tamamını iptal eder. */
+appointmentsRouter.post(
+  '/:id/cancel-siblings',
+  asyncHandler(async (req, res) => {
+    const auth = req.auth!;
+    const result = await cancelSiblingAppointments(
+      auth.shopId,
+      req.params.id!,
+      auth.barberId,
+      auth,
+    );
+
+    res.json(result);
   }),
 );

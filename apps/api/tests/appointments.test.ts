@@ -868,3 +868,121 @@ describe('GET / — tarih aralığı (from/to) filtresi', () => {
     expect(res.body.items).toHaveLength(1);
   });
 });
+
+/**
+ * Aynı cihazdan toplu iptal.
+ *
+ * Sahte numaralarla takvim doldurma girişiminde randevular farklı isimler,
+ * farklı numaralar ve farklı günlerle dağılmış oluyor. Berberin elindeki tek
+ * ortak nokta cihaz özeti; onsuz tek tek avlamak gerekiyor ve biri kaçıyor.
+ */
+describe('Aynı cihazdan toplu iptal', () => {
+  const CIHAZ = 'a'.repeat(32);
+  const BASKA_CIHAZ = 'b'.repeat(32);
+
+  function ileriGun(n: number): string {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + n);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  async function sahteRandevu(gun: number, telefon: string, cihaz: string, barberId = fx.adminId) {
+    return createAppointment({
+      shopId: fx.shopId,
+      barberId,
+      serviceId: fx.serviceId,
+      startsAt: zonedTimeToUtc(ileriGun(gun), '09:00', TZ),
+      customerName: 'Sahte ' + telefon.slice(-4),
+      customerPhone: telefon,
+      source: 'web',
+      clientHash: cihaz,
+    });
+  }
+
+  it('aynı cihazdan gelen diğer randevuları listeler', async () => {
+    const ilk = await sahteRandevu(1, '+905991110001', CIHAZ);
+    await sahteRandevu(2, '+905991110002', CIHAZ);
+    await sahteRandevu(3, '+905991110003', CIHAZ);
+    // Başka cihazdan gelen bir randevu — listeye GİRMEMELİ
+    await sahteRandevu(4, '+905991110004', BASKA_CIHAZ);
+
+    const res = await request(app).get(`${BASE}/${ilk.id}/siblings`).set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(3);
+  });
+
+  it('hepsini tek işlemle iptal eder, başka cihazınkine DOKUNMAZ', async () => {
+    const ilk = await sahteRandevu(1, '+905991110001', CIHAZ);
+    await sahteRandevu(2, '+905991110002', CIHAZ);
+    const masum = await sahteRandevu(3, '+905991110009', BASKA_CIHAZ);
+
+    const res = await request(app)
+      .post(`${BASE}/${ilk.id}/cancel-siblings`)
+      .set(auth(adminToken))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.cancelled).toBe(2);
+
+    const iptaller = await testPrisma.appointment.findMany({
+      where: { shopId: fx.shopId, clientHash: CIHAZ },
+    });
+    expect(iptaller.every((a) => a.status === 'cancelled')).toBe(true);
+
+    const dokunulmayan = await testPrisma.appointment.findUnique({ where: { id: masum.id } });
+    expect(dokunulmayan?.status).toBe('confirmed');
+  });
+
+  it('iptal edilen saatler tekrar müsait olur', async () => {
+    const ilk = await sahteRandevu(1, '+905991110001', CIHAZ);
+
+    await request(app).post(`${BASE}/${ilk.id}/cancel-siblings`).set(auth(adminToken)).send({});
+
+    const slots = await request(app)
+      .get(`${BASE}/slots`)
+      .query({ barberId: fx.adminId, serviceId: fx.serviceId, date: ileriGun(1) })
+      .set(auth(adminToken));
+
+    const labels = slots.body.slots.map((s: { label: string }) => s.label);
+    expect(labels).toContain('09:00');
+  });
+
+  it('cihaz özeti olmayan randevunun kardeşi yoktur', async () => {
+    // Panelden girilen randevularda cihaz özeti bulunmaz; araç onlara
+    // yanlışlıkla dokunmamalı.
+    const panelRandevusu = await createAppointment({
+      shopId: fx.shopId,
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      startsAt: zonedTimeToUtc(ileriGun(5), '09:00', TZ),
+      customerName: 'Panel Müşterisi',
+      source: 'panel',
+    });
+
+    const res = await request(app)
+      .get(`${BASE}/${panelRandevusu.id}/siblings`)
+      .set(auth(adminToken));
+
+    expect(res.body.items).toHaveLength(0);
+  });
+
+  it('staff başka berberin randevusunu toplu iptalle silemez', async () => {
+    const firatinki = await sahteRandevu(1, '+905991110001', CIHAZ, fx.staffId);
+    await sahteRandevu(2, '+905991110002', CIHAZ, fx.adminId);
+
+    const res = await request(app)
+      .post(`${BASE}/${firatinki.id}/cancel-siblings`)
+      .set(auth(staffToken))
+      .send({});
+
+    expect(res.status).toBe(200);
+    // Yalnızca kendi randevusu iptal edilmeli
+    expect(res.body.cancelled).toBe(1);
+
+    const muslumunki = await testPrisma.appointment.findFirst({
+      where: { shopId: fx.shopId, barberId: fx.adminId, clientHash: CIHAZ },
+    });
+    expect(muslumunki?.status).toBe('confirmed');
+  });
+});

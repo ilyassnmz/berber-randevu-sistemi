@@ -3,6 +3,8 @@ import { APPOINTMENT_SOURCE } from '@berber/shared';
 import { prisma } from '../db/client.js';
 import { logger } from '../lib/logger.js';
 import { NotFoundError, ConflictError } from '../lib/errors.js';
+import { hashClientIp } from '../lib/client-hash.js';
+import { localDayBounds, formatLocalDate } from '../lib/time.js';
 import {
   createAppointment,
   cancelAppointment,
@@ -87,6 +89,79 @@ export async function getPublicShop() {
   return shops[0]!;
 }
 
+
+/**
+ * Aynı cihazdan bir günde kaç FARKLI telefon numarasına randevu alınabilir.
+ *
+ * ── Neden bu kural var? ──────────────────────────────────────────
+ *
+ * Telefon numarası doğrulanmıyor. "Bir numara güne tek randevu" kuralı,
+ * tek numarayla saldırıyı 7 randevuyla sınırlıyor — ama saldırgan her
+ * seferinde RASTGELE bir numara yazarsa o kural hiç devreye girmiyor,
+ * çünkü her numara sistem için yeni bir müşteri. Kara liste de işe
+ * yaramıyor, aynı sebeple.
+ *
+ * Bu kural saldırıyı kaynağında kesiyor: numara değişse de cihaz aynı.
+ *
+ * ── Neden 3? ─────────────────────────────────────────────────────
+ *
+ * Gerçek kullanımda aynı bağlantıdan birden fazla numara olağan: baba,
+ * eş, iki çocuk. 1 ya da 2 olsaydı bu aileleri engellerdi. 3, ailenin
+ * rahatça geçtiği ama sahte numara üretmenin hemen duvara çarptığı yer.
+ *
+ * ⚠️ Kesin çözüm DEĞİL: cihazını mobil veriye alıp adresini değiştiren
+ * biri aşabilir. Ama bu artık "sinirli müşteri" değil, uğraşmaya kararlı
+ * biri demektir — ve o durumda berberin toplu iptal aracı devreye giriyor.
+ */
+const GUNLUK_FARKLI_NUMARA_SINIRI = 3;
+
+/**
+ * Aynı cihazdan bugün kaç farklı numaraya randevu alındığını kontrol eder.
+ *
+ * Aynı numara tekrar randevu alıyorsa sayılmaz — sınır FARKLI numara sayısı
+ * üzerinden işliyor, kişinin kendi randevu sayısı üzerinden değil.
+ */
+async function assertCihazSinirinaTakilmadi(params: {
+  shopId: string;
+  timezone: string;
+  clientHash: string | null;
+  phone: string;
+}): Promise<void> {
+  const { shopId, timezone, clientHash, phone } = params;
+
+  // IP çözülemediyse (beklenmez) kuralı uygulayamayız; randevuyu engellemek
+  // yerine geçiriyoruz — diğer korumalar (gün başına tek randevu, hız sınırı,
+  // 7 günlük pencere) hâlâ yerinde.
+  if (!clientHash) return;
+
+  const bugun = formatLocalDate(new Date(), timezone);
+  const { start, end } = localDayBounds(bugun, timezone);
+
+  const bugunkuRandevular = await prisma.appointment.findMany({
+    where: { shopId, clientHash, createdAt: { gte: start, lt: end } },
+    select: { customer: { select: { phone: true } } },
+  });
+
+  const farkliNumaralar = new Set(
+    bugunkuRandevular.map((a) => a.customer.phone).filter((t): t is string => Boolean(t)),
+  );
+
+  // Zaten bu numaraya randevu alınmışsa yeni bir "farklı numara" değil.
+  if (farkliNumaralar.has(phone)) return;
+
+  if (farkliNumaralar.size >= GUNLUK_FARKLI_NUMARA_SINIRI) {
+    logger.warn(
+      { shopId, clientHash, farkliNumaraSayisi: farkliNumaralar.size },
+      'Cihaz başına günlük farklı numara sınırına takılan randevu denemesi',
+    );
+    throw new ConflictError(
+      'Bugün bu cihazdan çok sayıda farklı numaraya randevu alınmış. ' +
+        'Yarın tekrar deneyebilir ya da bizi arayabilirsiniz.',
+      'DEVICE_PHONE_LIMIT',
+    );
+  }
+}
+
 /** Sitenin açılışta ihtiyaç duyduğu her şey: dükkan, hizmetler, berberler. */
 export async function getPublicShopInfo() {
   const shop = await getPublicShop();
@@ -154,9 +229,19 @@ export async function createPublicAppointment(input: {
   startsAt: Date;
   customerName: string;
   customerPhone: string;
+  /** Express'in çözdüğü istemci IP'si. Özetlenip saklanır, hamı asla.  */
+  clientIp?: string | undefined;
 }) {
   const shop = await getPublicShop();
   const publicToken = generatePublicToken();
+  const clientHash = hashClientIp(input.clientIp);
+
+  await assertCihazSinirinaTakilmadi({
+    shopId: shop.id,
+    timezone: shop.timezone,
+    clientHash,
+    phone: input.customerPhone,
+  });
 
   const appointment = await createAppointment({
     shopId: shop.id,
@@ -167,6 +252,7 @@ export async function createPublicAppointment(input: {
     customerPhone: input.customerPhone,
     source: APPOINTMENT_SOURCE.WEB,
     publicToken,
+    clientHash,
   });
 
   logger.info(

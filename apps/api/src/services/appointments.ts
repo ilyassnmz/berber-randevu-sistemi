@@ -197,6 +197,11 @@ export interface CreateAppointmentParams {
    * iptal edebilmesi için üretilen gizli anahtar. Yalnızca `web` kaynağında dolu.
    */
   publicToken?: string | undefined;
+  /**
+   * İstemci IP'sinin özeti (bkz. lib/client-hash.ts). Kötüye kullanım
+   * tespiti ve toplu iptal için; yalnızca site kaynaklı randevularda dolu.
+   */
+  clientHash?: string | null | undefined;
 }
 
 /**
@@ -221,6 +226,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
     auth,
     notifyCustomer = false,
     publicToken,
+    clientHash,
   } = params;
 
   if (auth) assertCanAccessBarber(auth, barberId);
@@ -303,6 +309,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
         status,
         source,
         publicToken: publicToken ?? null,
+        clientHash: clientHash ?? null,
         confirmDeadline:
           status === APPOINTMENT_STATUS.PENDING_CONFIRM
             ? new Date(Date.now() + shop.confirmTimeoutMin * 60_000)
@@ -795,4 +802,74 @@ export async function getAppointment(shopId: string, appointmentId: string, auth
   const appointment = await loadAppointment(shopId, appointmentId);
   if (auth) assertCanAccessBarber(auth, appointment.barberId);
   return appointment;
+}
+
+/**
+ * Aynı cihazdan gelen GELECEK randevuları birlikte bulur.
+ *
+ * Sahte numaralarla takvim doldurma girişiminde berberin karşısındaki sorun
+ * şu: randevular farklı isimler ve farklı numaralarla, farklı günlere
+ * dağılmış durumda. Tek tek bulup iptal etmek dakikalar sürüyor ve biri
+ * gözden kaçıyor. Ortak nokta yalnızca cihaz özeti.
+ *
+ * Yalnızca GELECEK ve iptal edilmemiş randevular döner — geçmişi temizlemek
+ * bu aracın işi değil.
+ */
+export async function findSiblingAppointments(
+  shopId: string,
+  appointmentId: string,
+  auth?: AuthContext,
+) {
+  const appointment = await loadAppointment(shopId, appointmentId);
+  if (auth) assertCanAccessBarber(auth, appointment.barberId);
+
+  // Cihaz özeti yoksa (panelden girilmiş ya da eski kayıt) kardeş de yok.
+  if (!appointment.clientHash) return [];
+
+  return prisma.appointment.findMany({
+    where: {
+      shopId,
+      clientHash: appointment.clientHash,
+      startsAt: { gte: new Date() },
+      status: { in: BLOCKING_STATUSES as AppointmentStatus[] },
+      // staff yalnızca kendi randevularına dokunabilir; admin hepsine.
+      ...(auth && auth.role !== 'admin' ? { barberId: auth.barberId } : {}),
+    },
+    include: { customer: true, service: true, barber: true },
+    orderBy: { startsAt: 'asc' },
+  });
+}
+
+/**
+ * Aynı cihazdan gelen gelecek randevuların TAMAMINI iptal eder.
+ *
+ * Her biri normal iptal yolundan geçiyor: durum değişikliği, denetim kaydı ve
+ * saatin serbest kalması aynı şekilde işliyor. Toplu olması, kuralların
+ * atlanacağı anlamına gelmiyor.
+ */
+export async function cancelSiblingAppointments(
+  shopId: string,
+  appointmentId: string,
+  actorId: string,
+  auth?: AuthContext,
+) {
+  const kardesler = await findSiblingAppointments(shopId, appointmentId, auth);
+
+  let iptalEdilen = 0;
+  for (const k of kardesler) {
+    await cancelAppointment(
+      shopId,
+      k.id,
+      'barber',
+      'Aynı cihazdan toplu iptal (kötüye kullanım şüphesi)',
+      actorId,
+      false, // müşteriye bildirim GÖNDERİLMEZ: numaralar zaten sahte olabilir
+      auth,
+    );
+    iptalEdilen += 1;
+  }
+
+  logger.warn({ shopId, appointmentId, iptalEdilen }, 'Aynı cihazdan toplu randevu iptali');
+
+  return { cancelled: iptalEdilen };
 }

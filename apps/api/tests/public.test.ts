@@ -474,3 +474,73 @@ describe('Berberin çalışma günleri', () => {
     });
   });
 });
+
+/**
+ * Cihaz başına günlük FARKLI numara sınırı.
+ *
+ * Tehdit: telefon numarası doğrulanmıyor. Bir kişi her seferinde rastgele
+ * bir numara yazarak "bir numara güne tek randevu" kuralını tamamen
+ * atlayabilir — her numara sistem için yeni bir müşteri olduğu için kara
+ * liste de işe yaramaz.
+ *
+ * Bu kural saldırıyı kaynağında kesiyor: numara değişse de cihaz aynı.
+ */
+describe('Aynı cihazdan günlük farklı numara sınırı', () => {
+  /** Farklı günlere randevu alır; "aynı güne ikinci randevu" kuralına takılmasın. */
+  async function alRandevu(gunOfset: number, telefon: string) {
+    const tarih = localDatePlusDays(gunOfset);
+    const slots = await request(app).get(`${BASE}/slots`).query({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      date: tarih,
+    });
+
+    return request(app)
+      .post(`${BASE}/appointments`)
+      .send({
+        barberId: fx.adminId,
+        serviceId: fx.serviceId,
+        startsAt: slots.body.slots[0].startsAt,
+        customerName: 'Cihaz Testi',
+        customerPhone: telefon,
+      });
+  }
+
+  it('üç farklı numaraya izin verir, DÖRDÜNCÜyü reddeder', async () => {
+    // Aynı test istemcisi = aynı IP = aynı cihaz özeti
+    expect((await alRandevu(1, '+905990000001')).status).toBe(201);
+    expect((await alRandevu(2, '+905990000002')).status).toBe(201);
+    expect((await alRandevu(3, '+905990000003')).status).toBe(201);
+
+    const dorduncu = await alRandevu(4, '+905990000004');
+    expect(dorduncu.status).toBe(409);
+    expect(dorduncu.body.error.code).toBe('DEVICE_PHONE_LIMIT');
+  });
+
+  it('sınıra ulaşılsa bile AYNI numara randevu almaya devam edebilir', async () => {
+    // Kontrol grubu: sınır "farklı numara" sayısına bakıyor, kişinin kendi
+    // randevu sayısına değil. Bir aile üyesi engellenmemeli.
+    await alRandevu(1, '+905990000001');
+    await alRandevu(2, '+905990000002');
+    await alRandevu(3, '+905990000003');
+
+    const ayniNumaraTekrar = await alRandevu(4, '+905990000001');
+    expect(ayniNumaraTekrar.status).toBe(201);
+  });
+
+  it('randevuya cihaz özeti yazılır (ham IP değil)', async () => {
+    const res = await alRandevu(1, '+905990000009');
+    expect(res.status).toBe(201);
+
+    const kayit = await testPrisma.appointment.findFirst({
+      where: { shopId: fx.shopId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(kayit?.clientHash).toBeTruthy();
+    // Özet olmalı: IP'ye benzememeli, sabit uzunlukta hex olmalı
+    expect(kayit?.clientHash).toMatch(/^[a-f0-9]{32}$/);
+    expect(kayit?.clientHash).not.toContain('.');
+    expect(kayit?.clientHash).not.toContain(':');
+  });
+});

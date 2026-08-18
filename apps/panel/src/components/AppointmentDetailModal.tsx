@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { X, CheckCheck, UserX, Clock, MessageCircle } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { X, CheckCheck, UserX, Clock, MessageCircle, ShieldAlert } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from '../lib/types';
 import { formatPhoneForDisplay } from '@berber/shared';
 import { formatDateTr, formatTimeTr, formatPrice } from '../lib/dates';
@@ -11,6 +11,8 @@ import {
   completeAppointment,
   markNoShow,
   blacklistCustomer,
+  fetchSiblingAppointments,
+  cancelSiblingAppointments,
 } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
 
@@ -32,6 +34,27 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
   const [showReschedule, setShowReschedule] = useState(false);
 
   const isActive = ACTIVE_STATUSES.has(appointment.status);
+
+  /**
+   * Aynı cihazdan gelen diğer randevular.
+   *
+   * Yalnızca siteden alınan randevularda anlamlı; panelden girilenlerde
+   * cihaz bilgisi yok ve uç boş liste döner.
+   */
+  const siblingsQuery = useQuery({
+    queryKey: ['siblings', appointment.id],
+    queryFn: () => fetchSiblingAppointments(appointment.id),
+    enabled: appointment.source === 'web',
+  });
+
+  // Kendisi de listede; "diğerleri" için bir eksiltiyoruz.
+  const digerleri = Math.max(0, (siblingsQuery.data?.items.length ?? 0) - 1);
+
+  const cancelSiblingsMutation = useMutation({
+    mutationFn: () => cancelSiblingAppointments(appointment.id),
+    onSuccess: invalidateAndClose,
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'İşlem başarısız'),
+  });
 
   function invalidateAndClose() {
     void queryClient.invalidateQueries({ queryKey: ['appointments'] });
@@ -223,6 +246,31 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
                 Randevuyu İptal Et
               </button>
             )}
+          </div>
+        )}
+
+        {digerleri > 0 && (
+          <div className="sibling-warning">
+            <div className="sibling-warning-head">
+              <ShieldAlert size={16} aria-hidden />
+              <span>Aynı cihazdan {digerleri} randevu daha var</span>
+            </div>
+            <p>
+              Farklı isim ve numaralarla alınmış olabilirler. Sahte randevu
+              şüphesi varsa hepsini tek seferde iptal edebilirsiniz.
+            </p>
+            <button
+              type="button"
+              className="btn btn-danger btn-block"
+              onClick={() => cancelSiblingsMutation.mutate()}
+              disabled={cancelSiblingsMutation.isPending}
+            >
+              {cancelSiblingsMutation.isPending ? (
+                <span className="spinner" />
+              ) : (
+                `Bu cihazdan gelen ${digerleri + 1} randevuyu iptal et`
+              )}
+            </button>
           </div>
         )}
 
