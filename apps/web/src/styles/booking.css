@@ -485,3 +485,17 @@
   color: var(--accent);
   font-weight: 560;
 }
+
+/* Kapalı gün — tıklanamaz ve bunu görünür şekilde söylüyor.
+   Gizlemek yerine soluk gösteriliyor: şeritte boşluk olması "gün eksik"
+   gibi durur, soluk kutu "burası kapalı" der. */
+.date-chip-closed {
+  opacity: 0.34;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.date-chip-closed:hover {
+  border-color: var(--border);
+}

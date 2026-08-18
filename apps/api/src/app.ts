@@ -108,6 +108,26 @@ export function createApp(): Express {
     }),
   );
 
+  /**
+   * API yanıtları ASLA önbelleklenmez.
+   *
+   * ⚠️ Bu, ters vekil (Caddy) doğru yapılandırılmış olsa bile burada
+   * duruyor — bilinçli bir tekrar. Bir dönem Caddy'deki önbellek başlığı
+   * yanlışlıkla API yanıtlarına da uygulandı ve sonuçları ağırdı:
+   *
+   *   * /slots bir saat önbelleklendi → DOLU bir saat başka müşteriye hâlâ
+   *     boş görünebiliyordu.
+   *   * /shop önbelleklendi → sunucuya yeni bir alan eklendiğinde tarayıcı
+   *     eski cevabı kullanmaya devam etti ve site beyaz ekrana düştü.
+   *
+   * Önbellek politikasını veriyi ÜRETEN katman söylemeli; vekil yapılandırması
+   * zamanla değişir ve bu tür hatalar sessizce geri gelir.
+   */
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+
   // ── API rotaları ───────────────────────────────────────
   //
   // ⚠️ `public` GİRİŞ İSTEMEZ — internet sitesinden randevu alan müşteriler

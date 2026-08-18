@@ -23,6 +23,7 @@ import {
   formatPrice,
   formatDuration,
   formatAppointmentMoment,
+  dayOfWeek,
 } from '../lib/dates';
 import type { CreatedAppointment } from '../lib/types';
 
@@ -347,13 +348,23 @@ export default function BookingPage() {
           <div className="date-strip" role="group" aria-label="Gün seçimi">
             {dateStrip.map((d) => {
               const chip = formatDateChip(d);
+              // Berberin o gün çalışıp çalışmadığı /shop yanıtından biliniyor;
+              // kapalı gün için sunucuya sormaya gerek yok. Kapalı günler devre
+              // dışı bırakılıyor ki müşteri boşuna tıklamasın.
+              // `?? null` bilerek: alan eksikse HİÇBİR gün kapalı sayılmıyor.
+              // Bir dönem bu satır eksik alanda çöküyordu ve TÜM sayfa beyaz
+              // kalıyordu — bir süsleme özelliği yüzünden randevu almanın
+              // tamamen durması kabul edilemez.
+              const calisilanGunler = barber?.workingDays ?? null;
+              const kapali = calisilanGunler ? !calisilanGunler.includes(dayOfWeek(d)) : false;
               return (
                 <button
                   key={d}
                   type="button"
-                  className="date-chip"
+                  className={`date-chip${kapali ? ' date-chip-closed' : ''}`}
+                  disabled={kapali}
                   aria-pressed={activeDate === d}
-                  aria-label={formatDateLong(d)}
+                  aria-label={kapali ? `${formatDateLong(d)} — kapalı` : formatDateLong(d)}
                   onClick={() => {
                     setDate(d);
                     setStartsAt(null);
@@ -383,11 +394,22 @@ export default function BookingPage() {
           {slotsQuery.data && slotsQuery.data.slots.length === 0 && (
             <div className="state-message">
               <CalendarX2 size={30} strokeWidth={1.5} aria-hidden />
-              <span>
-                Bu gün için uygun saat kalmamış.
-                <br />
-                Başka bir gün seçebilirsiniz.
-              </span>
+              {/* "Kapalıyız" ile "doldu" farklı şeyler: ilki başka GÜN
+                  bakmayı, ikincisi başka SAAT denemeyi söyler. Tek mesajla
+                  ikisini anlatmak müşteriyi yanıltıyordu. */}
+              {barber?.workingDays && activeDate && !barber.workingDays.includes(dayOfWeek(activeDate)) ? (
+                <span>
+                  Bu gün kapalıyız.
+                  <br />
+                  Açık bir gün seçebilirsiniz.
+                </span>
+              ) : (
+                <span>
+                  Bu gün için uygun saat kalmamış.
+                  <br />
+                  Başka bir gün seçebilirsiniz.
+                </span>
+              )}
             </div>
           )}
 

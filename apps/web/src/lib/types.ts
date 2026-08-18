@@ -18,6 +18,14 @@ export interface Service {
 export interface Barber {
   id: string;
   name: string;
+  /**
+   * Berberin çalıştığı gün numaraları (0 = Pazar, 6 = Cumartesi).
+   *
+   * Tarih şeridi kapalı günleri buna göre devre dışı bırakıyor. Bu bilgi
+   * olmadan müşteri kapalı bir güne tıklayıp "uygun saat kalmamış" mesajı
+   * alıyordu — o mesaj "doldu" anlamına gelir ve kapalı gün için yanıltıcıdır.
+   */
+  workingDays: number[];
 }
 
 export interface ShopInfo {

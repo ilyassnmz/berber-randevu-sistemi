@@ -428,3 +428,49 @@ describe('Müşteri adı — en son verilen isim geçerlidir', () => {
     expect(musteriSonra?.name).toBe('Sabit İsim');
   });
 });
+
+/**
+ * Kapalı günler.
+ *
+ * Site, tarih şeridinde kapalı günleri soluk gösterip tıklanamaz yapıyor.
+ * Bunu yapabilmesi için berberin çalıştığı günleri /shop yanıtından
+ * öğrenmesi gerekiyor.
+ *
+ * Bilgi olmadan müşteri kapalı bir güne tıklayıp "uygun saat kalmamış"
+ * mesajı alıyordu — o mesaj "doldu" demektir ve kapalı gün için yanıltıcıdır.
+ */
+describe('Berberin çalışma günleri', () => {
+  it('/shop her berber için çalışılan günleri döner', async () => {
+    const res = await request(app).get(`${BASE}/shop`);
+
+    expect(res.status).toBe(200);
+    for (const b of res.body.barbers) {
+      expect(Array.isArray(b.workingDays)).toBe(true);
+      // Fixture tüm günleri çalışır yapıyor
+      expect(b.workingDays).toHaveLength(7);
+    }
+  });
+
+  it('kapalı gün workingDays listesinde YER ALMAZ', async () => {
+    // Pazar'ı (0) kapat
+    await testPrisma.workingHours.updateMany({
+      where: { barberId: fx.adminId, dayOfWeek: 0 },
+      data: { isWorking: false },
+    });
+
+    const res = await request(app).get(`${BASE}/shop`);
+    const admin = res.body.barbers.find((b: { id: string }) => b.id === fx.adminId);
+
+    expect(admin.workingDays).not.toContain(0);
+    expect(admin.workingDays).toHaveLength(6);
+
+    // Diğer berber etkilenmemeli
+    const staff = res.body.barbers.find((b: { id: string }) => b.id === fx.staffId);
+    expect(staff.workingDays).toHaveLength(7);
+
+    await testPrisma.workingHours.updateMany({
+      where: { barberId: fx.adminId, dayOfWeek: 0 },
+      data: { isWorking: true },
+    });
+  });
+});

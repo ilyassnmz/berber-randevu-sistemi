@@ -99,7 +99,13 @@ export async function getPublicShopInfo() {
     }),
     prisma.barber.findMany({
       where: { shopId: shop.id, isActive: true },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        // Hangi günler çalışıyor? Site, kapalı günleri tarih şeridinde
+        // baştan soluk gösterebilsin diye burada dönüyor.
+        workingHours: { select: { dayOfWeek: true, isWorking: true } },
+      },
       orderBy: { name: 'asc' },
     }),
   ]);
@@ -114,7 +120,20 @@ export async function getPublicShopInfo() {
       cancelCutoffMin: shop.cancelCutoffMin,
     },
     services,
-    barbers,
+
+    /**
+     * `workingDays`: berberin çalıştığı gün numaraları (0 = Pazar).
+     *
+     * Site bunu tarih şeridinde kapalı günleri soluk göstermek için
+     * kullanıyor. Olmadığında müşteri kapalı bir güne tıklayıp "uygun saat
+     * kalmamış" mesajıyla karşılaşıyordu — bu mesaj "dolmuş" anlamına gelir
+     * ve kapalı gün için YANILTICIdır.
+     */
+    barbers: barbers.map((b) => ({
+      id: b.id,
+      name: b.name,
+      workingDays: b.workingHours.filter((w) => w.isWorking).map((w) => w.dayOfWeek),
+    })),
   };
 }
 

@@ -47,23 +47,22 @@
 	root * {args[0]}
 	encode gzip
 
+	# Güvenlik başlıkları HER yanıta uygulanır (API dahil) — zararsız ve istenir.
 	header {
-		# Ön yüz varlıkları içerik-adresli (Vite dosya adına hash koyuyor),
-		# bu yüzden uzun süre önbelleklenebilir.
-		?Cache-Control "public, max-age=3600"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 
-	# index.html ASLA önbelleklenmemeli: yeni sürüm yayınlandığında
-	# tarayıcı eski index'i tutarsa, artık var olmayan hash'li dosyaları
-	# istemeye devam eder ve site beyaz ekrana düşer.
-	@html path /index.html /
-	header @html Cache-Control "no-cache"
-
-	# Service worker da önbelleklenmemeli — güncellenmesi gereken İLK şey o.
-	@sw path /sw.js
-	header @sw Cache-Control "no-cache"
+	# ⚠️ ÖNBELLEK BAŞLIĞI BURADA DEĞİL, aşağıda dosya sunan handle bloklarının
+	# İÇİNDE. Bir dönem burada, site seviyesindeydi ve API yanıtlarına da
+	# uygulandı — sonucu ciddi oldu:
+	#
+	#   * /api/v1/public/slots bir saat boyunca önbelleklendi; dolu bir saat
+	#     başka müşteriye hâlâ BOŞ görünebiliyordu.
+	#   * /api/v1/public/shop önbelleklendi; sunucuya yeni bir alan eklendiğinde
+	#     tarayıcı eski cevabı kullanmaya devam etti ve site beyaz ekrana düştü.
+	#
+	# Kural: önbellek yalnızca STATİK DOSYALARA uygulanır. API yanıtları asla.
 
 	# ⚠️ Uzantılı dosyalar index.html'e DÜŞMEZ.
 	#
@@ -77,14 +76,28 @@
 	#
 	# Artık olmayan bir varlık düzgünce 404 dönüyor: hata görünür oluyor,
 	# sessizce yanlış içerik sunulmuyor.
+	# Service worker önbelleklenmemeli — güncellenmesi gereken İLK şey o.
+	# @asset'ten ÖNCE gelmeli, yoksa *.js kuralına takılıp uzun ömürlü
+	# önbelleğe düşer ve kendini bir daha güncelleyemez.
+	handle /sw.js {
+		header Cache-Control "no-cache"
+		file_server
+	}
+
 	@asset path *.js *.mjs *.css *.map *.json *.webmanifest *.txt *.xml *.png *.jpg *.jpeg *.svg *.ico *.gif *.webp *.woff *.woff2 *.ttf
 	handle @asset {
+		# Vite dosya adına içerik hash'i koyuyor; içerik değişince ad da
+		# değişiyor. Bu yüzden uzun önbellek güvenli.
+		header Cache-Control "public, max-age=3600"
 		file_server
 	}
 
 	# Geri kalan her şey (gezinme istekleri) index.html'e düşer —
 	# /randevu/<anahtar> gibi adresler React Router'a devredilsin diye.
 	handle {
+		# index.html ASLA önbelleklenmemeli: tarayıcı eskisini tutarsa artık
+		# var olmayan hash'li dosyaları ister ve site beyaz ekrana düşer.
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}

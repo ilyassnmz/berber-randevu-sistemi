@@ -101,3 +101,14 @@ export function formatPrice(price: number | null): string | null {
 export function formatDuration(minutes: number): string {
   return `${minutes} dk`;
 }
+
+/**
+ * "2026-08-23" → haftanın günü (0 = Pazar).
+ *
+ * Öğle vakti üzerinden hesaplanıyor: gün başında/sonunda saat dilimi kayması
+ * tarihi bir gün öteleyebiliyor, öğlen böyle bir risk taşımıyor.
+ */
+export function dayOfWeek(date: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!, 12)).getUTCDay();
+}
