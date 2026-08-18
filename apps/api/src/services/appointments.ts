@@ -377,8 +377,22 @@ async function findOrCreateCustomer(
   });
 
   if (existing) {
-    // İsim boşsa doldur, doluysa dokunma — müşteri kendi verdiği ismi korusun
-    if (!existing.name && name) {
+    // Randevuda verilen isim, kayıtlı isimden farklıysa GÜNCELLENİR.
+    //
+    // ⚠️ Eskiden tam tersiydi: isim doluysa dokunulmuyordu. O davranış
+    // chatbot dönemine aitti — müşteri adını bir kez söylüyordu ve berberin
+    // sonradan girdiği kısaltmanın onu ezmemesi isteniyordu.
+    //
+    // Randevu siteye taşınınca bu kural hataya dönüştü: müşteri her randevuda
+    // adını KENDİSİ yazıyor, ama yazdığı isim sessizce çöpe gidiyor ve
+    // panelde eski isim görünüyordu. İlk seferde yanlış yazan biri adını bir
+    // daha asla düzeltemiyordu; aynı numarayı kullanan iki kişi (eş, kardeş)
+    // de hep ilkinin adıyla görünüyordu.
+    //
+    // Artık en son verilen isim geçerli: müşterinin kendini nasıl tanıttığı
+    // en güncel bilgidir ve berberin ekranda gördüğü isim, müşterinin az önce
+    // yazdığı isimle aynı olmalıdır.
+    if (name && name !== existing.name) {
       return prisma.customer.update({
         where: { id: existing.id },
         data: { name },

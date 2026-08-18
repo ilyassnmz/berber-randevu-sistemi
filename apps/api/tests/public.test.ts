@@ -348,3 +348,83 @@ describe('Anahtarla randevu görüntüleme ve iptal', () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * Müşteri adının güncellenmesi.
+ *
+ * Gerçek bir şikâyetten doğdu: "randevu oluşturduğumda müşteri adı yanlış
+ * görünüyor". Sebebi, aynı telefon numarası kayıtlıysa randevuda yazılan
+ * ismin sessizce yok sayılmasıydı — panelde hep ilk kaydedilen isim
+ * görünüyordu.
+ *
+ * Sessiz veri kaybı olduğu için özellikle sinsiydi: hata mesajı yok,
+ * randevu başarıyla oluşuyor, sadece isim yanlış.
+ */
+describe('Müşteri adı — en son verilen isim geçerlidir', () => {
+  it('aynı numarayla alınan ikinci randevuda YENİ isim görünür', async () => {
+    const ilk = await request(app)
+      .post(`${BASE}/appointments`)
+      .send(bookingBody({ customerName: 'Ali Önceki' }));
+    expect(ilk.status).toBe(201);
+    expect(ilk.body.appointment.customerName).toBe('Ali Önceki');
+
+    // Aynı telefon, BAŞKA gün (aynı güne ikinci randevu zaten yasak)
+    const ikinci = await request(app)
+      .post(`${BASE}/appointments`)
+      .send(
+        bookingBody({
+          customerName: 'Veli Sonraki',
+          startsAt: zonedTimeToUtc(localDatePlusDays(4), SLOT_TIME, TZ).toISOString(),
+        }),
+      );
+
+    expect(ikinci.status).toBe(201);
+    expect(ikinci.body.appointment.customerName).toBe('Veli Sonraki');
+  });
+
+  it('müşteri kaydındaki isim de gerçekten güncellenir', async () => {
+    await request(app).post(`${BASE}/appointments`).send(bookingBody({ customerName: 'Eski İsim' }));
+
+    await request(app)
+      .post(`${BASE}/appointments`)
+      .send(
+        bookingBody({
+          customerName: 'Yeni İsim',
+          startsAt: zonedTimeToUtc(localDatePlusDays(4), SLOT_TIME, TZ).toISOString(),
+        }),
+      );
+
+    const musteri = await testPrisma.customer.findFirst({
+      where: { shopId: fx.shopId, phone: '+905321112233' },
+    });
+    expect(musteri?.name).toBe('Yeni İsim');
+  });
+
+  it('aynı isimle tekrar randevu alınca gereksiz güncelleme yapmaz', async () => {
+    // Davranışın kararlı olduğunu gösteriyor: isim değişmediyse kayıt aynı kalır.
+    const ilk = await request(app)
+      .post(`${BASE}/appointments`)
+      .send(bookingBody({ customerName: 'Sabit İsim' }));
+
+    const musteriOnce = await testPrisma.customer.findFirst({
+      where: { shopId: fx.shopId, phone: '+905321112233' },
+    });
+
+    await request(app)
+      .post(`${BASE}/appointments`)
+      .send(
+        bookingBody({
+          customerName: 'Sabit İsim',
+          startsAt: zonedTimeToUtc(localDatePlusDays(4), SLOT_TIME, TZ).toISOString(),
+        }),
+      );
+
+    const musteriSonra = await testPrisma.customer.findFirst({
+      where: { shopId: fx.shopId, phone: '+905321112233' },
+    });
+
+    expect(ilk.status).toBe(201);
+    expect(musteriSonra?.id).toBe(musteriOnce?.id);
+    expect(musteriSonra?.name).toBe('Sabit İsim');
+  });
+});
