@@ -1,22 +1,13 @@
+import { testVeritabaninaYonlendir } from './db-env.js';
+
 /**
- * Entegrasyon testleri için ortam hazırlığı.
+ * Entegrasyon testleri için ortam hazırlığı — her test dosyasından önce.
  *
- * `.env` dosyasını process.env'e yükler. Node 22'nin yerleşik
- * `process.loadEnvFile()` fonksiyonu kullanılıyor — ek bağımlılık yok.
+ * Veritabanı yönlendirmesi ve üretim koruması `db-env.ts` içinde; burada
+ * yalnızca uygulamanın açılış kontrollerini geçmek için gereken değerler var.
  */
 
-try {
-  process.loadEnvFile();
-} catch {
-  throw new Error(
-    'apps/api/.env bulunamadı. Entegrasyon testleri gerçek bir veritabanı ister.\n' +
-      '.env.example dosyasını .env olarak kopyalayıp DATABASE_URL değerini doldurun.',
-  );
-}
-
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL tanımlı değil — entegrasyon testleri çalıştırılamaz.');
-}
+testVeritabaninaYonlendir();
 
 // env.ts üretim kontrollerini tetiklemesin
 process.env.NODE_ENV = 'test';

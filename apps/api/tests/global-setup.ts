@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { testVeritabaninaYonlendir } from './db-env.js';
 
 /**
  * Test koşusu başlamadan ÖNCE bir kez çalışır.
@@ -24,14 +25,9 @@ import { PrismaClient } from '@prisma/client';
  * `helpers.ts` → createFixture içinde belirleniyor, ikisi birlikte değişmeli.
  */
 export async function setup(): Promise<void> {
-  try {
-    process.loadEnvFile();
-  } catch {
-    // setup.ts zaten anlamlı bir hata veriyor; burada sessiz geçiyoruz.
-    return;
-  }
-
-  if (!process.env.DATABASE_URL) return;
+  // Üretim koruması ve test veritabanına yönlendirme burada da gerekli:
+  // globalSetup, setupFiles'dan ÖNCE ve ayrı bir modül grafiğinde çalışıyor.
+  testVeritabaninaYonlendir();
 
   const prisma = new PrismaClient();
 
