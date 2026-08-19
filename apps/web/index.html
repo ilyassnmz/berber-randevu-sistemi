@@ -32,12 +32,9 @@
       // gerektiği için burada (küçük bir) tekrar kaçınılmaz.
       (function () {
         var stored = localStorage.getItem('ozdede-web-theme');
-        var theme =
-          stored === 'dark' || stored === 'light'
-            ? stored
-            : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-              ? 'dark'
-              : 'light';
+        // Kayıt yoksa AÇIK tema — cihaz tercihine bakılmıyor.
+        // Gerekçe için bkz. src/lib/theme.ts → getStoredTheme
+        var theme = stored === 'dark' || stored === 'light' ? stored : 'light';
         document.documentElement.dataset.theme = theme;
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f0f17' : '#f7f6f2');

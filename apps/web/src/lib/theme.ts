@@ -17,18 +17,22 @@ const STORAGE_KEY = 'ozdede-web-theme';
 const THEME_COLOR: Record<Theme, string> = { light: '#f7f6f2', dark: '#0f0f17' };
 
 /**
- * Kayıtlı tema; yoksa CİHAZIN tercihi.
+ * Kayıtlı tema; yoksa AÇIK tema.
  *
- * Panelden tek farkı bu: panel varsayılan olarak açık temaya düşüyor, burada
- * ilk ziyarette cihazın koyu tema tercihi varsa ona uyuluyor. Müşteri bu
- * sayfaya yılda birkaç kez giriyor; "ilk açılışta doğru görünsün" beklentisi
- * berberin her gün açtığı panele göre daha baskın.
+ * ⚠️ Cihazın koyu tema tercihine BİLEREK uyulmuyor.
+ *
+ * Bu bir dükkanın vitrini: siteye ilk giren herkes aynı şeyi görmeli.
+ * Cihaz tercihine uyulduğunda aynı adres kimine açık, kimine koyu açılıyordu
+ * ve dükkanın nasıl göründüğü ziyaretçinin telefon ayarına kalıyordu.
+ *
+ * Koyu temayı isteyen sağ üstteki düğmeyle geçebiliyor ve tercihi
+ * hatırlanıyor — yani seçim kaybolmuyor, sadece varsayılan sabitleniyor.
  */
 export function getStoredTheme(): Theme {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored === 'dark' || stored === 'light') return stored;
 
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 /**

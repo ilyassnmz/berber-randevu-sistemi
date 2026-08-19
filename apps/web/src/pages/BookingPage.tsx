@@ -394,14 +394,20 @@ export default function BookingPage() {
           {slotsQuery.data && slotsQuery.data.slots.length === 0 && (
             <div className="state-message">
               <CalendarX2 size={30} strokeWidth={1.5} aria-hidden />
-              {/* "Kapalıyız" ile "doldu" farklı şeyler: ilki başka GÜN
-                  bakmayı, ikincisi başka SAAT denemeyi söyler. Tek mesajla
-                  ikisini anlatmak müşteriyi yanıltıyordu. */}
-              {barber?.workingDays && activeDate && !barber.workingDays.includes(dayOfWeek(activeDate)) ? (
+              {/* Sebebi sunucu söylüyor: kapalı / izinli / dolu.
+                  Üçünü "doldu" diye anlatmak yanıltıcıydı — berber izinliyken
+                  müşteri saatlerin dolduğunu sanıp erken davranmaya çalışıyordu. */}
+              {slotsQuery.data.reason === 'closed' ? (
                 <span>
                   Bu gün kapalıyız.
                   <br />
                   Açık bir gün seçebilirsiniz.
+                </span>
+              ) : slotsQuery.data.reason === 'timeoff' ? (
+                <span>
+                  {barber?.name} bu gün randevu almıyor.
+                  <br />
+                  Başka bir gün seçebilirsiniz.
                 </span>
               ) : (
                 <span>

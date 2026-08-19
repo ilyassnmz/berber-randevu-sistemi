@@ -42,6 +42,15 @@ export interface ShopInfo {
   barbers: Barber[];
 }
 
+/**
+ * Saat listesi boşsa SEBEBİ.
+ *
+ * Üçü farklı mesaj gerektiriyor: kapalı gün ve izin günü "doldu"
+ * DEĞİLdir. "Doldu" demek müşteriye "erken davransam kapardım" hissi
+ * verir; berber izinliyse o gün ne yapsa yer açılmaz.
+ */
+export type EmptySlotsReason = 'closed' | 'timeoff' | 'full';
+
 export interface Slot {
   startsAt: string;
   /** Sunucuda dükkanın saat diliminde üretilmiş gösterim: "09:00". */

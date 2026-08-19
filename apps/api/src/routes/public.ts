@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { slotsQuerySchema, publicBookingSchema } from '@berber/shared';
 import { isTest } from '../config/env.js';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { getAvailableSlots } from '../services/appointments.js';
+import { getAvailableSlotsWithReason } from '../services/appointments.js';
 import {
   getPublicShop,
   getPublicShopInfo,
@@ -65,13 +65,16 @@ publicRouter.get(
     const { barberId, serviceId, date } = slotsQuerySchema.parse(req.query);
     const shop = await getPublicShop();
 
-    const slots = await getAvailableSlots(shop.id, barberId, serviceId, date);
+    const { slots, reason } = await getAvailableSlotsWithReason(shop.id, barberId, serviceId, date);
 
     res.json({
       slots: slots.map((s) => ({
         startsAt: s.startsAt.toISOString(),
         label: s.label,
       })),
+      // Liste boşsa SEBEBİ: kapalı / izinli / dolu. Site buna göre farklı
+      // mesaj gösteriyor — üçünü 'doldu' diye anlatmak yanıltıcıydı.
+      reason,
     });
   }),
 );

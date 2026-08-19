@@ -155,6 +155,49 @@ async function loadSlotContext(
   };
 }
 
+/**
+ * Saat listesi BOŞ döndüğünde sebebi.
+ *
+ * Müşteriye "uygun saat kalmamış" demek, üç farklı durumu tek mesajda
+ * birleştiriyordu ve ikisinde YANLIŞtı:
+ *
+ *   closed  — berber o gün hiç çalışmıyor (haftalık düzen)
+ *   timeoff — berber o gün izinli
+ *   full    — gerçekten tüm saatler dolu
+ *
+ * "Doldu" mesajı müşteriye "erken davranırsam kaparım" hissi verir; oysa
+ * berber izinliyse o gün ne kadar erken bakarsa baksın yer açılmayacak.
+ */
+export type EmptySlotsReason = 'closed' | 'timeoff' | 'full';
+
+/**
+ * Saatleri, boşsa sebebiyle birlikte döner.
+ *
+ * Sebep, ek veritabanı sorgusu OLMADAN çıkarılıyor: elimizdeki bağlamla
+ * slotlar bir kez de izinler yokmuş gibi hesaplanıyor. O hesapta saat
+ * çıkıyorsa boşluğun sebebi izindir; çıkmıyorsa gün gerçekten doludur.
+ */
+export async function getAvailableSlotsWithReason(
+  shopId: string,
+  barberId: string,
+  serviceId: string,
+  date: string,
+  now = new Date(),
+): Promise<{ slots: Slot[]; reason: EmptySlotsReason | null }> {
+  const ctx = await loadSlotContext(shopId, barberId, serviceId, date, { actor: 'customer' });
+  const slots = computeAvailableSlots({ ...ctx, date, now });
+
+  if (slots.length > 0) return { slots, reason: null };
+
+  if (!ctx.workingHours || !ctx.workingHours.isWorking) {
+    return { slots, reason: 'closed' };
+  }
+
+  const izinsizSlotlar = computeAvailableSlots({ ...ctx, timeOff: [], date, now });
+
+  return { slots, reason: izinsizSlotlar.length > 0 ? 'timeoff' : 'full' };
+}
+
 export async function getAvailableSlots(
   shopId: string,
   barberId: string,

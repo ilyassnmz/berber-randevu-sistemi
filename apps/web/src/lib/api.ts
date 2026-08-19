@@ -1,4 +1,4 @@
-import type { ShopInfo, Slot, CreatedAppointment, AppointmentDetail } from './types';
+import type { ShopInfo, Slot, CreatedAppointment, AppointmentDetail, EmptySlotsReason } from './types';
 
 /**
  * Herkese açık API istemcisi.
@@ -62,9 +62,11 @@ export function fetchSlots(
   barberId: string,
   serviceId: string,
   date: string,
-): Promise<{ slots: Slot[] }> {
+): Promise<{ slots: Slot[]; reason: EmptySlotsReason | null }> {
   const query = new URLSearchParams({ barberId, serviceId, date });
-  return callApi<{ slots: Slot[] }>(`/slots?${query.toString()}`);
+  return callApi<{ slots: Slot[]; reason: EmptySlotsReason | null }>(
+    `/slots?${query.toString()}`,
+  );
 }
 
 export function createAppointment(input: {

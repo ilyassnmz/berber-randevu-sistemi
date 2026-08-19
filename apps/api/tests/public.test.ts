@@ -544,3 +544,68 @@ describe('Aynı cihazdan günlük farklı numara sınırı', () => {
     expect(kayit?.clientHash).not.toContain(':');
   });
 });
+
+/**
+ * Boş saat listesinin SEBEBİ.
+ *
+ * Berber izinliyken müşteriye "uygun saat kalmamış" deniyordu; bu "doldu"
+ * anlamına gelir ve müşteriyi erken davranmaya iter. Oysa izinli günde ne
+ * kadar erken bakarsa baksın yer açılmaz.
+ */
+describe('Boş saat listesinin sebebi', () => {
+  it('kapalı günde reason=closed döner', async () => {
+    await testPrisma.workingHours.updateMany({
+      where: { barberId: fx.adminId },
+      data: { isWorking: false },
+    });
+
+    const res = await request(app).get(`${BASE}/slots`).query({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      date: nearDate,
+    });
+
+    expect(res.body.slots).toHaveLength(0);
+    expect(res.body.reason).toBe('closed');
+
+    await testPrisma.workingHours.updateMany({
+      where: { barberId: fx.adminId },
+      data: { isWorking: true },
+    });
+  });
+
+  it('izin günü reason=timeoff döner (dolu DEĞİL)', async () => {
+    // Günün tamamını kapatan izin
+    await testPrisma.timeOff.create({
+      data: {
+        shopId: fx.shopId,
+        barberId: fx.adminId,
+        startsAt: zonedTimeToUtc(nearDate, '00:00', TZ),
+        endsAt: zonedTimeToUtc(nearDate, '23:59', TZ),
+        reason: 'Yıllık izin',
+      },
+    });
+
+    const res = await request(app).get(`${BASE}/slots`).query({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      date: nearDate,
+    });
+
+    expect(res.body.slots).toHaveLength(0);
+    expect(res.body.reason).toBe('timeoff');
+
+    await testPrisma.timeOff.deleteMany({ where: { shopId: fx.shopId } });
+  });
+
+  it('saat varken reason null döner', async () => {
+    const res = await request(app).get(`${BASE}/slots`).query({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      date: nearDate,
+    });
+
+    expect(res.body.slots.length).toBeGreaterThan(0);
+    expect(res.body.reason).toBeNull();
+  });
+});
