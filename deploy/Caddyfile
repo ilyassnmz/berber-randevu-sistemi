@@ -47,10 +47,29 @@
 	root * {args[0]}
 	encode gzip
 
-	# Güvenlik başlıkları HER yanıta uygulanır (API dahil) — zararsız ve istenir.
+	# Güvenlik başlıkları HER yanıta uygulanır (API dahil).
+	#
+	# ⚠️ API yanıtlarında bunların bir kısmını helmet zaten gönderiyor, ama
+	# STATİK SAYFALAR helmet'ten geçmiyor — Caddy onları doğrudan sunuyor.
+	# Bir dönem yalnızca alttaki iki başlık vardı; giriş sayfası çerçeveye
+	# alınabiliyordu (clickjacking) ve HSTS yalnızca API yanıtlarından
+	# geliyordu. Sayfaların kendisi korumasızdı.
 	header {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
+
+		# Tarayıcı bu alan adına bir yıl boyunca yalnızca HTTPS ile bağlansın.
+		# İlk isteğin araya girilmesini (SSL stripping) engelliyor.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+		# Çerçeveye alınmayı engeller. İkisi birlikte: X-Frame-Options eski
+		# tarayıcılar, frame-ancestors modern olanlar için.
+		#
+		# Özellikle PANEL için kritik: saldırgan giriş sayfasını görünmez bir
+		# çerçeveye alıp üstüne kendi düğmelerini koyabilir, berber farkında
+		# olmadan tıklar. Bu sitelerin hiçbirinin gömülmesi gerekmiyor.
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'"
 	}
 
 	# ⚠️ ÖNBELLEK BAŞLIĞI BURADA DEĞİL, aşağıda dosya sunan handle bloklarının
