@@ -214,3 +214,16 @@ export function createService(input: {
 }) {
   return apiRequest<{ service: Service }>('/services', { method: 'POST', body: input });
 }
+
+/**
+ * Hizmeti kaldırır (yalnızca admin).
+ *
+ * `mode` sunucudan geliyor: hiç kullanılmamış hizmet gerçekten silinir
+ * ('deleted'), randevusu olan gizlenir ('hidden') — geçmiş randevularda
+ * hizmet adı okunabilir kalsın diye.
+ */
+export function deleteService(id: string) {
+  return apiRequest<{ mode: 'deleted' | 'hidden'; appointmentCount: number }>(`/services/${id}`, {
+    method: 'DELETE',
+  });
+}

@@ -4,6 +4,7 @@ import { prisma } from '../db/client.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { NotFoundError, ConflictError } from '../lib/errors.js';
+import { logger } from '../lib/logger.js';
 
 export const servicesRouter: Router = Router();
 
@@ -103,5 +104,79 @@ servicesRouter.post(
     });
 
     res.status(201).json({ service });
+  }),
+);
+
+/**
+ * Hizmeti kaldırır — yalnızca admin.
+ *
+ * ── İki farklı silme ─────────────────────────────────────────────
+ *
+ * Hizmet HİÇ kullanılmamışsa gerçekten silinir. Yanlışlıkla eklenen ya da
+ * adı hatalı yazılan bir hizmet ortalıkta iz bırakmasın.
+ *
+ * Randevusu VARSA silinmez, gizlenir (isActive = false). İki sebeple:
+ *   1. Veritabanı kısıtı zaten engelliyor (onDelete: Restrict) — randevu
+ *      hangi hizmete ait olduğunu kaybedemez.
+ *   2. Geçmiş randevularda "Saç Boyama" yazması gerekiyor; hizmet silinse
+ *      berber geçmişte ne yaptığını göremezdi.
+ *
+ * Gizlenen hizmet müşteri sitesinde ve panelde görünmez ama eski
+ * randevularda adı okunmaya devam eder.
+ */
+servicesRouter.delete(
+  '/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const shopId = req.auth!.shopId;
+
+    const service = await prisma.service.findFirst({
+      where: { id: req.params.id!, shopId },
+    });
+    if (!service) throw new NotFoundError('Hizmet bulunamadı');
+
+    // ⚠️ Son aktif hizmet silinemez.
+    //
+    // Hizmetsiz bir dükkanda müşteri randevu alamaz ve panel saat ızgarasını
+    // hesaplayamaz (süreyi hizmetten okuyor). Sistemi kullanılamaz hale
+    // getiren bir işlemi sessizce yapmaktansa açıkça reddetmek doğrusu.
+    const aktifSayisi = await prisma.service.count({ where: { shopId, isActive: true } });
+    if (service.isActive && aktifSayisi <= 1) {
+      throw new ConflictError(
+        'Son hizmeti kaldıramazsınız — randevu alınabilmesi için en az bir hizmet gerekli.',
+        'LAST_SERVICE',
+      );
+    }
+
+    const randevuSayisi = await prisma.appointment.count({ where: { serviceId: service.id } });
+
+    if (randevuSayisi === 0) {
+      try {
+        await prisma.service.delete({ where: { id: service.id } });
+        res.json({ mode: 'deleted', appointmentCount: 0 });
+        return;
+      } catch {
+        // ⚠️ Sayım ile silme ARASINDA randevu alınmış olabilir.
+        //
+        // Veritabanı bu durumda silmeyi reddediyor (onDelete: Restrict) —
+        // doğrulandı, koruma çalışıyor. Ama hata yakalanmazsa müşteriye 500
+        // dönerdi. Oysa doğru davranış belli: randevusu olan hizmet gizlenir.
+        //
+        // Bu yarışın gerçekleşmesi için berberin hizmeti sildiği AN müşterinin
+        // aynı hizmete randevu alması gerekiyor; nadir ama imkânsız değil ve
+        // sonucu sessizce yanlış olmamalı.
+        logger.warn(
+          { serviceId: service.id },
+          'Hizmet silinirken araya randevu girdi — gizlemeye düşülüyor',
+        );
+      }
+    }
+
+    await prisma.service.update({
+      where: { id: service.id },
+      data: { isActive: false },
+    });
+
+    res.json({ mode: 'hidden', appointmentCount: randevuSayisi });
   }),
 );

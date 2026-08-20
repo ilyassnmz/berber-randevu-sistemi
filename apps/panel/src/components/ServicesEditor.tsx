@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Plus } from 'lucide-react';
-import { fetchServices, updateService, createService } from '../lib/endpoints';
+import { Check, Plus, Trash2 } from 'lucide-react';
+import { fetchServices, updateService, createService, deleteService } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
 import type { Service } from '../lib/types';
 
@@ -23,6 +23,10 @@ export function ServicesEditor() {
   const [yeniSure, setYeniSure] = useState('45');
   const [yeniFiyat, setYeniFiyat] = useState('');
   const [eklendi, setEklendi] = useState(false);
+
+  // Silme onayı bekleyen hizmet. Tek tıkla silinmemeli — geri alınamaz.
+  const [silinecek, setSilinecek] = useState<string | null>(null);
+  const [bilgi, setBilgi] = useState<string | null>(null);
 
   const query = useQuery({ queryKey: ['services'], queryFn: fetchServices });
   const services = query.data?.services ?? [];
@@ -83,6 +87,25 @@ export function ServicesEditor() {
       void queryClient.invalidateQueries({ queryKey: ['services'] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Hizmet eklenemedi'),
+  });
+
+  const silMutation = useMutation({
+    mutationFn: (id: string) => deleteService(id),
+    onSuccess: (sonuc) => {
+      setSilinecek(null);
+      // Kullanıcıya NE olduğunu söylüyoruz: silindi mi, gizlendi mi?
+      // "Sildim" deyip aslında gizlemek, berber geçmiş randevuda o hizmeti
+      // görünce kafa karışıklığı yaratırdı.
+      setBilgi(
+        sonuc.mode === 'deleted'
+          ? 'Hizmet silindi.'
+          : `Hizmet gizlendi. ${sonuc.appointmentCount} randevuda kullanıldığı için ` +
+            'tamamen silinemez; geçmiş randevularda adı görünmeye devam eder.',
+      );
+      setTimeout(() => setBilgi(null), 6000);
+      void queryClient.invalidateQueries({ queryKey: ['services'] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Hizmet kaldırılamadı'),
   });
 
   function handleEkle(e: FormEvent) {
@@ -152,9 +175,54 @@ export function ServicesEditor() {
             >
               {savedId === s.id ? <Check size={16} aria-hidden /> : 'Kaydet'}
             </button>
+            <button
+              type="button"
+              className="btn-icon service-row-delete"
+              aria-label={`${s.name} hizmetini kaldır`}
+              onClick={() => {
+                setError(null);
+                setSilinecek(silinecek === s.id ? null : s.id);
+              }}
+              disabled={silMutation.isPending}
+            >
+              <Trash2 size={16} aria-hidden />
+            </button>
+
+            {silinecek === s.id && (
+              <div className="service-confirm">
+                <span>
+                  <strong>{s.name}</strong> kaldırılsın mı? Müşteriler bu hizmeti
+                  artık göremeyecek.
+                </span>
+                <div className="service-confirm-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setSilinecek(null)}
+                    disabled={silMutation.isPending}
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => silMutation.mutate(s.id)}
+                    disabled={silMutation.isPending}
+                  >
+                    {silMutation.isPending ? <span className="spinner" /> : 'Evet, kaldır'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
+
+      {bilgi && (
+        <div className="notice notice-info service-notice" role="status">
+          {bilgi}
+        </div>
+      )}
 
       <form className="service-add" onSubmit={handleEkle}>
         <h3 className="service-add-title">

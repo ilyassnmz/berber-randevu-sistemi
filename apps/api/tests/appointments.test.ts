@@ -1107,3 +1107,139 @@ describe('POST /services — yeni hizmet ekleme', () => {
     expect(res.body.slots.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Hizmet kaldırma (DELETE /services/:id).
+ *
+ * İki farklı davranış var ve ayrımı korumak önemli: hiç kullanılmamış
+ * hizmet gerçekten silinir, randevusu olan yalnızca gizlenir. İkincisi
+ * olmazsa geçmiş randevular hangi hizmete ait olduğunu kaybeder.
+ */
+describe('DELETE /services/:id — hizmet kaldırma', () => {
+  beforeEach(async () => {
+    await testPrisma.service.deleteMany({
+      where: { shopId: fx.shopId, id: { not: fx.serviceId } },
+    });
+    // Fixture hizmeti testler arasında pasife düşmüş olabilir
+    await testPrisma.service.update({
+      where: { id: fx.serviceId },
+      data: { isActive: true },
+    });
+  });
+
+  async function hizmetEkle(name = 'Kaş Alma') {
+    const res = await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name, durationMin: 30, price: 100 });
+    return res.body.service;
+  }
+
+  it('hiç kullanılmamış hizmeti GERÇEKTEN siler', async () => {
+    const h = await hizmetEkle();
+
+    const res = await request(app)
+      .delete(`/api/v1/services/${h.id}`)
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe('deleted');
+
+    const kalan = await testPrisma.service.findUnique({ where: { id: h.id } });
+    expect(kalan).toBeNull();
+  });
+
+  it('randevusu olan hizmeti silmez, GİZLER', async () => {
+    const h = await hizmetEkle();
+
+    await createAppointment({
+      shopId: fx.shopId,
+      barberId: fx.adminId,
+      serviceId: h.id,
+      startsAt: zonedTimeToUtc(TEST_DATE, '09:00', TZ),
+      customerName: 'Kaş Müşterisi',
+      source: 'panel',
+    });
+
+    const res = await request(app)
+      .delete(`/api/v1/services/${h.id}`)
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe('hidden');
+    expect(res.body.appointmentCount).toBe(1);
+
+    const kayit = await testPrisma.service.findUnique({ where: { id: h.id } });
+    expect(kayit).not.toBeNull();
+    expect(kayit?.isActive).toBe(false);
+  });
+
+  it('gizlenen hizmetin geçmiş randevusu hâlâ okunabilir', async () => {
+    // Asıl mesele bu: berber geçmişte ne yaptığını görebilmeli.
+    const h = await hizmetEkle();
+
+    const randevu = await createAppointment({
+      shopId: fx.shopId,
+      barberId: fx.adminId,
+      serviceId: h.id,
+      startsAt: zonedTimeToUtc(TEST_DATE, '09:00', TZ),
+      customerName: 'Kaş Müşterisi',
+      source: 'panel',
+    });
+
+    await request(app).delete(`/api/v1/services/${h.id}`).set(auth(adminToken));
+
+    const res = await request(app)
+      .get(`${BASE}/${randevu.id}`)
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.appointment.service.name).toBe('Kaş Alma');
+  });
+
+  it('gizlenen hizmet müşteri sitesinde GÖRÜNMEZ', async () => {
+    const h = await hizmetEkle();
+    await request(app).delete(`/api/v1/services/${h.id}`).set(auth(adminToken));
+
+    process.env.PUBLIC_SHOP_ID = fx.shopId;
+    const res = await request(app).get('/api/v1/public/shop');
+    delete process.env.PUBLIC_SHOP_ID;
+
+    const isimler = res.body.services.map((x: { name: string }) => x.name);
+    expect(isimler).not.toContain('Kaş Alma');
+  });
+
+  it('SON aktif hizmeti kaldırmayı reddeder', async () => {
+    // Hizmetsiz dükkanda randevu alınamaz ve panel saat ızgarası hesaplayamaz.
+    const res = await request(app)
+      .delete(`/api/v1/services/${fx.serviceId}`)
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('LAST_SERVICE');
+
+    const kayit = await testPrisma.service.findUnique({ where: { id: fx.serviceId } });
+    expect(kayit?.isActive).toBe(true);
+  });
+
+  it('staff hizmet kaldıramaz', async () => {
+    const h = await hizmetEkle();
+
+    const res = await request(app)
+      .delete(`/api/v1/services/${h.id}`)
+      .set(auth(staffToken));
+
+    expect(res.status).toBe(403);
+
+    const kayit = await testPrisma.service.findUnique({ where: { id: h.id } });
+    expect(kayit).not.toBeNull();
+  });
+
+  it('başka dükkanın hizmetini kaldıramaz', async () => {
+    const res = await request(app)
+      .delete('/api/v1/services/00000000-0000-4000-8000-000000000000')
+      .set(auth(adminToken));
+
+    expect(res.status).toBe(404);
+  });
+});
