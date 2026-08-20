@@ -16,5 +16,20 @@ export default defineConfig({
     // Aynı tabloya yazan testler birbirini bozmasın
     fileParallelism: false,
     testTimeout: 30_000,
+    /**
+     * beforeAll/afterAll için de 30 saniye.
+     *
+     * Vitest'in kanca varsayılanı 10 saniye ve bu, uzaktaki bir veritabanına
+     * (Neon) karşı fixture kurmak için dar. Gerçekten yaşandı: webhook
+     * testinin beforeAll'u zaman aşımına uğradı, fixture oluşmadı, afterAll
+     * da tanımsız fixture'a takılıp dosyayı komple düşürdü. Testlerde hata
+     * yoktu — ağ o an yavaştı.
+     *
+     * 60 saniye çünkü webhook testi import'larını bilerek beforeAll İÇİNDE
+     * yapıyor (env değişkenleri modüller yüklenmeden ayarlanmalı). Diğer
+     * dosyalar dosya başında import ediyor ve o süre kancaya sayılmıyor.
+     * Windows'ta app.ts'in dönüştürülüp yüklenmesi tek başına ~13 saniye.
+     */
+    hookTimeout: 60_000,
   },
 });

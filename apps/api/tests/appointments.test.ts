@@ -986,3 +986,124 @@ describe('Aynı cihazdan toplu iptal', () => {
     expect(muslumunki?.status).toBe('confirmed');
   });
 });
+
+/**
+ * Hizmet ekleme (POST /services).
+ *
+ * Berber panelden yeni bir hizmet ("Kaş Alma" gibi) ekleyebilmeli ve bu
+ * hizmet müşteri sitesinde anında görünmeli.
+ */
+describe('POST /services — yeni hizmet ekleme', () => {
+  // ⚠️ Dış beforeEach yalnızca randevuları siliyor. Bu blok hizmet
+  // OLUŞTURUYOR; temizlenmezse ilk testin eklediği hizmet sonrakilerde
+  // isim çakışmasına yol açıyor ve testler YANLIŞ SEBEPLE geçiyor
+  // (ilk yazımda tam olarak bu oldu: 3 test aslında hiç ekleme yapmadan
+  // 'geçiyordu'). Fixture hizmeti korunuyor, gerisi siliniyor.
+  beforeEach(async () => {
+    await testPrisma.service.deleteMany({
+      where: { shopId: fx.shopId, id: { not: fx.serviceId } },
+    });
+  });
+
+  it('admin yeni hizmet ekleyebilir', async () => {
+    const res = await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'Kaş Alma', durationMin: 30, price: 100 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.service.name).toBe('Kaş Alma');
+    expect(res.body.service.durationMin).toBe(30);
+    expect(Number(res.body.service.price)).toBe(100);
+  });
+
+  it('eklenen hizmet müşteri sitesinde görünür', async () => {
+    await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'Kaş Alma', durationMin: 30, price: 100 });
+
+    process.env.PUBLIC_SHOP_ID = fx.shopId;
+    const res = await request(app).get('/api/v1/public/shop');
+    delete process.env.PUBLIC_SHOP_ID;
+
+    const isimler = res.body.services.map((x: { name: string }) => x.name);
+    expect(isimler).toContain('Kaş Alma');
+  });
+
+  it('listenin SONUNA eklenir, mevcut sıra bozulmaz', async () => {
+    const oncekiler = await request(app).get('/api/v1/services').set(auth(adminToken));
+    const ilkIsim = oncekiler.body.services[0].name;
+
+    await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'Kaş Alma', durationMin: 30, price: 100 });
+
+    const sonra = await request(app).get('/api/v1/services').set(auth(adminToken));
+    expect(sonra.body.services[0].name).toBe(ilkIsim);
+    expect(sonra.body.services.at(-1).name).toBe('Kaş Alma');
+  });
+
+  it('aynı isimde ikinci hizmeti REDDEDER', async () => {
+    await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'Kaş Alma', durationMin: 30, price: 100 });
+
+    // Büyük/küçük harf farkı da aynı sayılmalı — müşteri listede iki
+    // "kaş alma" görürse hangisini seçeceğini bilemez.
+    const res = await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'kaş alma', durationMin: 45, price: 120 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('SERVICE_NAME_TAKEN');
+  });
+
+  it('staff hizmet ekleyemez', async () => {
+    const res = await request(app)
+      .post('/api/v1/services')
+      .set(auth(staffToken))
+      .send({ name: 'İzinsiz Hizmet', durationMin: 30, price: 100 });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('fiyatsız hizmet eklenebilir', async () => {
+    const res = await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'Fiyatsız Hizmet', durationMin: 30 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.service.price).toBeNull();
+  });
+
+  it('geçersiz süreyi reddeder', async () => {
+    const res = await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'Çok Kısa', durationMin: 1, price: 100 });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('yeni hizmetin kendi süresine göre saat ızgarası üretilir', async () => {
+    // 30 dakikalık hizmet, 45 dakikalıktan FARKLI sayıda slot vermeli —
+    // slot motoru süreyi hizmetten okuyor.
+    const yeni = await request(app)
+      .post('/api/v1/services')
+      .set(auth(adminToken))
+      .send({ name: 'Kaş Alma', durationMin: 30, price: 100 });
+
+    const res = await request(app)
+      .get(`${BASE}/slots`)
+      .set(auth(adminToken))
+      .query({ barberId: fx.adminId, serviceId: yeni.body.service.id, date: TEST_DATE });
+
+    expect(res.status).toBe(200);
+    expect(res.body.slots.length).toBeGreaterThan(0);
+  });
+});

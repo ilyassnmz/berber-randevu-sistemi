@@ -205,3 +205,12 @@ export function cancelSiblingAppointments(appointmentId: string) {
     method: 'POST',
   });
 }
+
+/** Yeni hizmet ekler (yalnızca admin). Müşteri sitesinde anında görünür. */
+export function createService(input: {
+  name: string;
+  durationMin: number;
+  price: number | null;
+}) {
+  return apiRequest<{ service: Service }>('/services', { method: 'POST', body: input });
+}

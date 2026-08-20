@@ -1067,3 +1067,34 @@ svg {
   color: var(--text-dim);
   line-height: 1.5;
 }
+
+/* ── Yeni hizmet ekleme formu ────────────────────────────
+   Mevcut hizmet satırlarından görsel olarak ayrılıyor: üstteki liste
+   "düzenle", burası "ekle". Ayrım olmazsa berber hangi alanın neyi
+   değiştirdiğini karıştırıyor. */
+.service-add {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--border);
+}
+
+.service-add-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 620;
+}
+
+.service-add-hint {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.service-add-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
