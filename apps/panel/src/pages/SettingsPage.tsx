@@ -9,6 +9,7 @@ import { TimeOffManager } from '../components/TimeOffManager';
 import { AddBarberForm } from '../components/AddBarberForm';
 import { ServicesEditor } from '../components/ServicesEditor';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
+import { NotificationToggle } from '../components/NotificationToggle';
 
 export default function SettingsPage() {
   const barber = useAuthStore((s) => s.barber);
@@ -37,6 +38,15 @@ export default function SettingsPage() {
         <button type="button" className="btn btn-secondary btn-block" onClick={() => setShowChangePassword(true)}>
           <KeyRound size={16} aria-hidden /> Şifre Değiştir
         </button>
+      </div>
+
+      <div className="settings-section">
+        <h2>Bildirimler</h2>
+        <p className="settings-section-hint">
+          Müşteri siteden randevu aldığında telefonunuza bildirim gelir.
+          Her cihaz için ayrı açılması gerekir.
+        </p>
+        <NotificationToggle />
       </div>
 
       <div className="settings-section">

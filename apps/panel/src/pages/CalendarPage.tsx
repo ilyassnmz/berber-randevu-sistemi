@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarOff } from 'lucide-react';
+import { CalendarOff, ChevronDown, ChevronUp, XCircle } from 'lucide-react';
 import { useAuthStore } from '../lib/authStore';
 import { fetchAppointments, fetchBarbers, fetchServices, fetchSlots } from '../lib/endpoints';
-import { todayLocalDate } from '../lib/dates';
+import { todayLocalDate, formatTimeTr } from '../lib/dates';
 import type { Appointment, Slot } from '../lib/types';
 import { DateNav } from '../components/DateNav';
 import { UpcomingStrip } from '../components/UpcomingStrip';
@@ -26,6 +26,10 @@ export default function CalendarPage() {
   );
   const [walkInSlot, setWalkInSlot] = useState<{ startsAt: string } | null>(null);
   const [detailAppointment, setDetailAppointment] = useState<Appointment | null>(null);
+
+  // İptal edilenler varsayılan olarak KAPALI. Günün akışı temiz kalsın,
+  // ama bilgi de kaybolmasın (berber "bugün kim iptal etti?" diye sorabilir).
+  const [iptalleriGoster, setIptalleriGoster] = useState(false);
 
   const barbersQuery = useQuery({ queryKey: ['barbers'], queryFn: fetchBarbers });
   const servicesQuery = useQuery({ queryKey: ['services'], queryFn: fetchServices });
@@ -83,6 +87,22 @@ export default function CalendarPage() {
 
     return entries.sort((a, b) => a.time.localeCompare(b.time));
   }, [appointmentsQuery.data, slotsQuery.data]);
+
+  /**
+   * İptal edilen randevular.
+   *
+   * Günün akışından bilerek çıkarılmışlardı (aynı saatte hem "iptal edildi"
+   * kartı hem "boş — ekle" kartı görünüp o saat doluymuş izlenimi
+   * veriyordu). Ama tamamen görünmez olmaları da yanlıştı: berber bugün
+   * kimin iptal ettiğini hiçbir yerden göremiyordu ve geçmiş randevuların
+   * silindiğini sandı.
+   *
+   * Çözüm: akışta değil, altta katlanabilir bir bölümde.
+   */
+  const iptalEdilenler = useMemo(
+    () => (appointmentsQuery.data?.items ?? []).filter((a) => a.status === 'cancelled'),
+    [appointmentsQuery.data],
+  );
 
   const isLoading = appointmentsQuery.isLoading || (Boolean(referenceServiceId) && slotsQuery.isLoading);
   const hasError = appointmentsQuery.isError || slotsQuery.isError;
@@ -150,6 +170,48 @@ export default function CalendarPage() {
               ),
             )}
           </div>
+
+          {iptalEdilenler.length > 0 && (
+            <div className="cancelled-section">
+              <button
+                type="button"
+                className="cancelled-toggle"
+                onClick={() => setIptalleriGoster((v) => !v)}
+                aria-expanded={iptalleriGoster}
+              >
+                <XCircle size={15} aria-hidden />
+                <span>Bu gün iptal edilen {iptalEdilenler.length} randevu</span>
+                {iptalleriGoster ? (
+                  <ChevronUp size={16} aria-hidden />
+                ) : (
+                  <ChevronDown size={16} aria-hidden />
+                )}
+              </button>
+
+              {iptalleriGoster && (
+                <div className="cancelled-list">
+                  {iptalEdilenler.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className="cancelled-item"
+                      onClick={() => setDetailAppointment(a)}
+                    >
+                      <span className="cancelled-time">
+                        {a.localStartTime ?? formatTimeTr(a.startsAt)}
+                      </span>
+                      <span className="cancelled-name">
+                        {a.customer.name ?? 'İsimsiz müşteri'}
+                      </span>
+                      {a.cancelReason && (
+                        <span className="cancelled-reason">{a.cancelReason}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 

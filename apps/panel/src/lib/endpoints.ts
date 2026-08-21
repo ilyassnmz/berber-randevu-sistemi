@@ -227,3 +227,17 @@ export function deleteService(id: string) {
     method: 'DELETE',
   });
 }
+
+// ─── Bildirimler ─────────────────────────────────────────
+
+export function fetchPushKey() {
+  return apiRequest<{ publicKey: string | null; enabled: boolean }>('/push/key');
+}
+
+export function subscribePush(subscription: PushSubscriptionJSON) {
+  return apiRequest<{ ok: true }>('/push/subscribe', { method: 'POST', body: subscription });
+}
+
+export function unsubscribePush(endpoint: string) {
+  return apiRequest<{ ok: true }>('/push/unsubscribe', { method: 'POST', body: { endpoint } });
+}

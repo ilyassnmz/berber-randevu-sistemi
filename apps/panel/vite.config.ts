@@ -29,6 +29,10 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          // Bildirim dinleyicileri üretilen service worker'a eklenir.
+          // Tüm SW'u elle yazmaya geçmek (injectManifest) yerine bu:
+          // çalışan çevrimdışı önbellekleme mantığı olduğu gibi kalıyor.
+          importScripts: ['push-sw.js'],
           // API isteklerini önbelleğe alma — randevu verisi her zaman taze olmalı.
           // Yalnızca uygulama kabuğu (JS/CSS/HTML) çevrimdışı çalışsın.
           navigateFallbackDenylist: [/^\/api\//],

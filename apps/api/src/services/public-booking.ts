@@ -4,7 +4,8 @@ import { prisma } from '../db/client.js';
 import { logger } from '../lib/logger.js';
 import { NotFoundError, ConflictError } from '../lib/errors.js';
 import { hashClientIp } from '../lib/client-hash.js';
-import { localDayBounds, formatLocalDate } from '../lib/time.js';
+import { yeniRandevuBildirimi } from './push.js';
+import { localDayBounds, formatLocalDate, formatLocalTime, formatDateTr } from '../lib/time.js';
 import {
   createAppointment,
   cancelAppointment,
@@ -259,6 +260,24 @@ export async function createPublicAppointment(input: {
     { appointmentId: appointment.id, barberId: input.barberId },
     'İnternet sitesinden randevu oluşturuldu',
   );
+
+  /**
+   * Berbere bildirim.
+   *
+   * ⚠️ `await` VAR ama içeride her hata yutuluyor (bkz. services/push.ts).
+   * Bilinçli: randevu zaten oluştu ve müşteriye "alındı" denecek; bildirim
+   * gönderilememesi bunu geri alamaz. Gönderim beklenmesinin sebebi ise
+   * arka planda kalan bir işin sunucu kapanırken kaybolmaması.
+   */
+  const yerelGun = formatLocalDate(appointment.startsAt, shop.timezone);
+  await yeniRandevuBildirimi({
+    shopId: shop.id,
+    barberId: appointment.barberId,
+    barberName: appointment.barber.name,
+    customerName: appointment.customer.name,
+    serviceName: appointment.service.name,
+    zaman: `${formatDateTr(yerelGun, shop.timezone)}, ${formatLocalTime(appointment.startsAt, shop.timezone)}`,
+  });
 
   return { appointment, publicToken };
 }

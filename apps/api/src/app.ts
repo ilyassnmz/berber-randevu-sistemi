@@ -17,6 +17,7 @@ import { customersRouter } from './routes/customers.js';
 import { statsRouter } from './routes/stats.js';
 import { webhookRouter } from './routes/webhook.js';
 import { publicRouter } from './routes/public.js';
+import { pushRouter } from './routes/push.js';
 import { legalRouter } from './routes/legal.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
@@ -142,6 +143,7 @@ export function createApp(): Express {
   app.use('/api/v1/services', servicesRouter);
   app.use('/api/v1/customers', customersRouter);
   app.use('/api/v1/stats', statsRouter);
+  app.use('/api/v1/push', pushRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -1134,3 +1134,71 @@ svg {
 .service-notice {
   margin-top: 14px;
 }
+
+/* ── İptal edilen randevular ─────────────────────────────
+   Günün akışında DEĞİL, altta katlanabilir bir bölümde. Akışa konsaydı
+   aynı saatte hem "iptal edildi" hem "boş — ekle" kartı görünüp o saat
+   doluymuş izlenimi verirdi (bu daha önce yaşandı ve gizlenmişlerdi).
+   Ama tamamen görünmez olmaları da yanlıştı: berber bugün kimin iptal
+   ettiğini hiçbir yerden göremiyordu. */
+.cancelled-section {
+  margin-top: 18px;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.cancelled-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 2px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.cancelled-toggle span {
+  flex: 1;
+}
+
+.cancelled-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cancelled-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  text-align: left;
+  /* Üstü çizili: bakışta "bu olmayacak" demek, metin okumaya gerek yok. */
+  text-decoration: line-through;
+  text-decoration-color: var(--text-faint);
+}
+
+.cancelled-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cancelled-name {
+  flex: 1;
+}
+
+.cancelled-reason {
+  font-size: 12px;
+  color: var(--text-faint);
+  text-decoration: none;
+}

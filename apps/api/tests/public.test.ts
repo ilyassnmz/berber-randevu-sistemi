@@ -609,3 +609,103 @@ describe('Boş saat listesinin sebebi', () => {
     expect(res.body.reason).toBeNull();
   });
 });
+
+/**
+ * Randevu bildirimleri.
+ *
+ * Berber isteği: müşteri randevu aldığında Müslüm'e (patron) bildirim gitsin;
+ * randevu Fırat'a alınmışsa HEM Fırat'a HEM Müslüm'e gitsin.
+ *
+ * Burada gerçek gönderim sınanmıyor (VAPID + tarayıcı gerekir); sınanan şey
+ * KİMİN abonelik kaydının hedeflendiği ve gönderimin randevuyu düşürmediği.
+ */
+describe('Randevu bildirimi', () => {
+  beforeEach(async () => {
+    await testPrisma.pushSubscription.deleteMany({
+      where: { barber: { shopId: fx.shopId } },
+    });
+  });
+
+  async function aboneEkle(barberId: string, etiket: string) {
+    return testPrisma.pushSubscription.create({
+      data: {
+        barberId,
+        endpoint: `https://ornek.test/${etiket}-${Date.now()}-${Math.random()}`,
+        p256dh: 'test-p256dh-anahtari',
+        auth: 'test-auth-anahtari',
+      },
+    });
+  }
+
+  it('bildirim gönderilemese bile randevu OLUŞUR', async () => {
+    // Asıl güvence bu: sahte abonelik gönderimi patlatır, ama müşteri
+    // açısından randevu başarıyla alınmış olmalı.
+    await aboneEkle(fx.adminId, 'admin');
+    await aboneEkle(fx.staffId, 'staff');
+
+    const res = await request(app).post(`${BASE}/appointments`).send(bookingBody());
+
+    expect(res.status).toBe(201);
+
+    const kayit = await testPrisma.appointment.findFirst({ where: { shopId: fx.shopId } });
+    expect(kayit).not.toBeNull();
+    expect(kayit?.status).toBe('confirmed');
+  });
+
+  it('hiç abonelik yokken de randevu sorunsuz oluşur', async () => {
+    const res = await request(app).post(`${BASE}/appointments`).send(bookingBody());
+    expect(res.status).toBe(201);
+  });
+
+  it('abonelik kaydı aynı cihaz için TEKRARLANMAZ', async () => {
+    // Berber bildirimleri kapatıp açtıkça kayıt birikirse aynı telefona
+    // her randevuda birden fazla bildirim giderdi.
+    const token = await girisJetonu(fx.adminEmail);
+    const endpoint = 'https://ornek.test/ayni-cihaz';
+
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app)
+        .post('/api/v1/push/subscribe')
+        .set({ Authorization: `Bearer ${token}` })
+        .send({ endpoint, keys: { p256dh: 'anahtar-' + i, auth: 'auth-' + i } });
+      expect(res.status).toBe(201);
+    }
+
+    const sayi = await testPrisma.pushSubscription.count({ where: { endpoint } });
+    expect(sayi).toBe(1);
+  });
+
+  it('berber yalnızca KENDİ aboneliğini silebilir', async () => {
+    const endpoint = 'https://ornek.test/muslumun-cihazi';
+    await testPrisma.pushSubscription.create({
+      data: { barberId: fx.adminId, endpoint, p256dh: 'a', auth: 'b' },
+    });
+
+    const staffToken = await girisJetonu(fx.staffEmail);
+    const res = await request(app)
+      .post('/api/v1/push/unsubscribe')
+      .set({ Authorization: `Bearer ${staffToken}` })
+      .send({ endpoint });
+
+    expect(res.status).toBe(200);
+
+    // Fırat isteği başarıyla döndü ama Müslüm'ün kaydı DURUYOR olmalı
+    const kayit = await testPrisma.pushSubscription.findUnique({ where: { endpoint } });
+    expect(kayit).not.toBeNull();
+  });
+
+  it('giriş yapmadan abonelik kurulamaz', async () => {
+    const res = await request(app)
+      .post('/api/v1/push/subscribe')
+      .send({ endpoint: 'https://ornek.test/yetkisiz', keys: { p256dh: 'a', auth: 'b' } });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+async function girisJetonu(email: string): Promise<string> {
+  const res = await request(app)
+    .post('/api/v1/auth/login')
+    .send({ email, password: fx.password });
+  return res.body.accessToken as string;
+}
