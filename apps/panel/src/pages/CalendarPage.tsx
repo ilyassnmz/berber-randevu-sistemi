@@ -165,6 +165,7 @@ export default function CalendarPage() {
                 <SlotCard
                   key={entry.slot.startsAt}
                   label={entry.slot.label}
+                  isPast={entry.slot.isPast}
                   onClick={() => setWalkInSlot({ startsAt: entry.slot.startsAt })}
                 />
               ),

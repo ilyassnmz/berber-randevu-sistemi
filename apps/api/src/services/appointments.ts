@@ -205,6 +205,11 @@ export async function getAvailableSlots(
   date: string,
   now = new Date(),
   auth?: AuthContext,
+  /**
+   * Geçmiş saatler de dönsün mü? Yalnızca panelin gün görünümü için.
+   * Müşteri tarafı ASLA true göndermemeli — geçmişe randevu alınamaz.
+   */
+  includePast = false,
 ): Promise<Slot[]> {
   if (auth) assertCanAccessBarber(auth, barberId);
 
@@ -214,7 +219,7 @@ export async function getAvailableSlots(
   const actor: BookingActor = auth ? 'barber' : 'customer';
 
   const ctx = await loadSlotContext(shopId, barberId, serviceId, date, { actor });
-  return computeAvailableSlots({ ...ctx, date, now });
+  return computeAvailableSlots({ ...ctx, date, now, includePast });
 }
 
 // ─────────────────────────────────────────────────────────

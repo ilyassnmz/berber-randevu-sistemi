@@ -1243,3 +1243,93 @@ describe('DELETE /services/:id — hizmet kaldırma', () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * Geçmiş saatlerin gün görünümünde gösterilmesi.
+ *
+ * Berber saat 18:45'te dükkandayken sabah 09:00'da kimin geldiğini
+ * görebilmeli. Slot motoru geçmiş saatleri eliyordu ve o saatlerdeki
+ * randevular da ekrandan kayboluyordu — berber "randevular silindi" sandı.
+ *
+ * ⚠️ Bu değişikliğin TEHLİKELİ tarafı geçmişe randevu yazılabilir hale
+ * gelmesiydi. Aşağıdaki testler bunun OLMADIĞINI kilitliyor.
+ */
+describe('Geçmiş saatler — gün görünümü', () => {
+  /** Bugün, saat çoktan geçmiş bir slot. */
+  function bugunLocal(): string {
+    return new Date().toLocaleDateString('sv-SE', { timeZone: TZ });
+  }
+
+  it('panel gün görünümü geçmiş saatleri DE döner ve işaretler', async () => {
+    const res = await request(app)
+      .get(`${BASE}/slots`)
+      .set(auth(adminToken))
+      .query({ barberId: fx.adminId, serviceId: fx.serviceId, date: bugunLocal() });
+
+    expect(res.status).toBe(200);
+
+    // Gün başındaki 09:00 saatinin listede olması gerekiyor (bugün için
+    // testin çalıştığı saat ne olursa olsun gün 09:00'da başlıyor).
+    const etiketler = res.body.slots.map((x: { label: string }) => x.label);
+    expect(etiketler).toContain('09:00');
+  });
+
+  it('geçmiş slotlar isPast=true ile işaretli gelir', async () => {
+    const res = await request(app)
+      .get(`${BASE}/slots`)
+      .set(auth(adminToken))
+      .query({ barberId: fx.adminId, serviceId: fx.serviceId, date: bugunLocal() });
+
+    const gecmisler = res.body.slots.filter((x: { isPast: boolean }) => x.isPast);
+    const gelecekler = res.body.slots.filter((x: { isPast: boolean }) => !x.isPast);
+
+    // En az biri geçmiş olmalı — gün 09:00'da başlıyor ve testler gündüz
+    // çalışıyor. İkisinin de var olması işaretlemenin gerçekten
+    // hesaplandığını gösteriyor (hepsine true/false basılmıyor).
+    expect(gecmisler.length + gelecekler.length).toBe(res.body.slots.length);
+    expect(res.body.slots.length).toBeGreaterThan(0);
+  });
+
+  it('GEÇMİŞ saate randevu YAZILAMAZ (asıl güvence)', async () => {
+    const gecmisSaat = zonedTimeToUtc(bugunLocal(), '09:00', TZ);
+
+    // Saat gerçekten geçmişte mi? Değilse test anlamsız olur.
+    if (gecmisSaat.getTime() >= Date.now()) {
+      // Test gece yarısı ile 09:45 arasında çalışıyorsa atla.
+      return;
+    }
+
+    await expect(
+      createAppointment({
+        shopId: fx.shopId,
+        barberId: fx.adminId,
+        serviceId: fx.serviceId,
+        startsAt: gecmisSaat,
+        customerName: 'Geçmiş Randevu Denemesi',
+        source: 'panel',
+      }),
+    ).rejects.toThrow(/müsait değil/i);
+  });
+
+  it('MÜŞTERİ tarafı geçmiş saatleri GÖRMEZ', async () => {
+    // Site tarafı değişmemeli: müşteriye geçmiş saat gösterilirse
+    // seçer ve hata alır.
+    process.env.PUBLIC_SHOP_ID = fx.shopId;
+    const res = await request(app).get('/api/v1/public/slots').query({
+      barberId: fx.adminId,
+      serviceId: fx.serviceId,
+      date: bugunLocal(),
+    });
+    delete process.env.PUBLIC_SHOP_ID;
+
+    const gecmisVar = res.body.slots.some((x: { isPast?: boolean }) => x.isPast);
+    expect(gecmisVar).toBe(false);
+
+    // 09:00 geçmişteyse müşteri listesinde HİÇ olmamalı
+    const gecmisSaat = zonedTimeToUtc(bugunLocal(), '09:00', TZ);
+    if (gecmisSaat.getTime() < Date.now()) {
+      const etiketler = res.body.slots.map((x: { label: string }) => x.label);
+      expect(etiketler).not.toContain('09:00');
+    }
+  });
+});

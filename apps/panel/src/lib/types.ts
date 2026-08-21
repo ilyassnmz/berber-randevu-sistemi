@@ -63,6 +63,13 @@ export interface Slot {
   startsAt: string;
   endsAt: string;
   label: string;
+  /**
+   * Saati geçmiş boş slot.
+   *
+   * Panel gün görünümü geçmiş saatleri de gösteriyor (berber sabah kimin
+   * geldiğini akşam da görebilmeli), ama onlara randevu YAZILAMAZ.
+   */
+  isPast?: boolean;
 }
 
 export interface WorkingHoursDay {

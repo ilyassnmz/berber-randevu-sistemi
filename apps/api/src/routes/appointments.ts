@@ -42,13 +42,30 @@ appointmentsRouter.get(
     // Fırat başka berberin takvimini sorgulayamaz
     assertCanAccessBarber(auth, barberId);
 
-    const slots = await getAvailableSlots(auth.shopId, barberId, serviceId, date, new Date(), auth);
+    // `includePast: true` — berberin GÜN GÖRÜNÜMÜ için.
+    //
+    // Berber saat 18:45'te dükkandayken sabah 09:00'da kimin geldiğini
+    // görebilmeli. Geçmiş saatler elenince o saatlerdeki randevular da
+    // ekrandan kayboluyor ve "randevular silindi" izlenimi doğuyordu.
+    //
+    // Geçmiş saatlere randevu YAZILAMAZ; sunucu doğrulaması ayrı ve
+    // `isSlotBookable` bu seçeneği zorla kapatıyor.
+    const slots = await getAvailableSlots(
+      auth.shopId,
+      barberId,
+      serviceId,
+      date,
+      new Date(),
+      auth,
+      true,
+    );
 
     res.json({
       slots: slots.map((s) => ({
         startsAt: s.startsAt.toISOString(),
         endsAt: s.endsAt.toISOString(),
         label: s.label,
+        isPast: s.isPast,
       })),
     });
   }),

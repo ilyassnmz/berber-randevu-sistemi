@@ -70,6 +70,18 @@ export interface SlotEngineInput {
 
   /** "Şimdi" — geçmiş saatleri elemek için. Testlerde sabitlenir. */
   now: Date;
+
+  /**
+   * Geçmiş saatler de listelensin mi?
+   *
+   * ⚠️ Varsayılan BİLEREK false: randevu ALMAK için geçmiş saat asla
+   * geçerli değildir ve `isSlotBookable` bu fonksiyona dayanıyor.
+   *
+   * Yalnızca PANELİN gün görünümü true veriyor. Berber saat 18:45'te
+   * dükkandayken sabah 09:00'da kimin geldiğini görebilmeli; geçmiş
+   * saatler elenince o randevular da ekrandan kayboluyordu.
+   */
+  includePast?: boolean;
 }
 
 export interface Slot {
@@ -77,6 +89,14 @@ export interface Slot {
   endsAt: Date;
   /** Yerel saat gösterimi: "09:00" */
   label: string;
+
+  /**
+   * Bu saat geçmişte mi?
+   *
+   * Arayüz bunu soluk göstermek ve tıklamayı engellemek için kullanıyor —
+   * geçmiş bir saate randevu yazılamaz, sunucu zaten reddeder.
+   */
+  isPast: boolean;
 }
 
 /**
@@ -96,6 +116,7 @@ export function computeAvailableSlots(input: SlotEngineInput): Slot[] {
     timeOff,
     appointments,
     now,
+    includePast = false,
   } = input;
 
   // Savunma: bozuk yapılandırma sessizce garip sonuç üretmesin
@@ -138,8 +159,10 @@ export function computeAvailableSlots(input: SlotEngineInput): Slot[] {
     // Hizmet gün kapanışını aşıyorsa bu ve sonraki adaylar da aşar
     if (candidateEnd > dayEnd) break;
 
-    // Geçmiş saat
-    if (candidate <= now) continue;
+    // Geçmiş saat: normalde elenir, panel gün görünümünde işaretlenip
+    // listede bırakılır.
+    const isPast = candidate <= now;
+    if (isPast && !includePast) continue;
 
     // İzin / mola ile çakışma
     if (overlapsAny(candidate, candidateEnd, timeOff)) continue;
@@ -151,6 +174,7 @@ export function computeAvailableSlots(input: SlotEngineInput): Slot[] {
       startsAt: candidate,
       endsAt: candidateEnd,
       label: formatLocalTime(candidate, timezone),
+      isPast,
     });
   }
 
@@ -200,6 +224,9 @@ export function isSlotBookable(
   startsAt: Date,
   input: Omit<SlotEngineInput, 'now'> & { now: Date },
 ): boolean {
-  const slots = computeAvailableSlots(input);
+  // ⚠️ `includePast` BURADA ZORLA kapatılıyor. Çağıran yanlışlıkla true
+  // gönderirse geçmişe randevu yazılabilir hale gelirdi; doğrulama
+  // fonksiyonu böyle bir seçeneğe tabi olmamalı.
+  const slots = computeAvailableSlots({ ...input, includePast: false });
   return slots.some((s) => s.startsAt.getTime() === startsAt.getTime());
 }

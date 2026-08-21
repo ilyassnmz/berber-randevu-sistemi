@@ -1202,3 +1202,32 @@ svg {
   color: var(--text-faint);
   text-decoration: none;
 }
+
+/* ── Geçmiş boş saat ─────────────────────────────────────
+   Gün görünümünde gösteriliyor ama tıklanamıyor. Gizlenseydi o saatteki
+   RANDEVULAR da bağlamsız kalırdı: berber saat 18:45'te sabah 09:00'ın
+   dolu mu boş mu geçtiğini görebilmeli. */
+.slot-card-past {
+  opacity: 0.4;
+  cursor: default;
+  border-style: solid;
+  font-style: italic;
+}
+
+.slot-card-past:hover {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+/* ── Tamamlanmış randevu ─────────────────────────────────
+   Sol kenar çizgisi zaten yeşildi ama kart diğerlerinden ayırt
+   edilmiyordu. Berber günün akışına bakınca "bu bitti" bilgisini
+   okumadan, bakışta almalı. */
+.appointment-card[data-status='completed'] {
+  background: var(--status-completed-bg, rgba(21, 128, 61, 0.07));
+  border-color: rgba(21, 128, 61, 0.28);
+}
+
+.appointment-card[data-status='completed'] .appt-time {
+  color: var(--status-completed);
+}

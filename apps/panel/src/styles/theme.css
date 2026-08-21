@@ -25,6 +25,8 @@
   --status-pending: #92660a;
   --status-cancelled: #dc2626;
   --status-completed: #15803d;
+  /* Tamamlanmış randevu kartının zemini — bakışta "bu bitti" demek için. */
+  --status-completed-bg: rgba(21, 128, 61, 0.07);
   --status-noshow: #57534e;
 
   --danger: #dc2626;
@@ -58,6 +60,8 @@
   --status-pending: #e2b93b;
   --status-cancelled: #e05a5a;
   --status-completed: #4caf7d;
+  /* Koyu temada aynı yeşil daha soluk kalır; opaklık biraz artırıldı. */
+  --status-completed-bg: rgba(76, 175, 125, 0.12);
   --status-noshow: #7a7a8c;
 
   --danger: #e05a5a;
