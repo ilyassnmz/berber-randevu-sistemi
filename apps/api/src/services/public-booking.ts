@@ -200,7 +200,20 @@ export async function getPublicShopInfo() {
       maxAdvanceDays: shop.maxAdvanceDays,
       cancelCutoffMin: shop.cancelCutoffMin,
     },
-    services,
+
+    /**
+     * ⚠️ `price` SAYIYA çevriliyor.
+     *
+     * Veritabanında Decimal duruyor ve JSON'a METİN olarak çıkıyor ("500").
+     * Site, çoklu seçimde fiyatları TOPLUYOR; metin olarak geldiğinde
+     * toplama sessizce birleştirmeye dönüşüyordu: Saç (500) + Lazer (2000)
+     * ekranda "5.002.000 ₺" olarak göründü. Tek tek gösterimde fark
+     * edilmiyordu, çünkü biçimlendirme metni de kabul ediyor.
+     */
+    services: services.map((s) => ({
+      ...s,
+      price: s.price === null ? null : Number(s.price),
+    })),
 
     /**
      * `workingDays`: berberin çalıştığı gün numaraları (0 = Pazar).

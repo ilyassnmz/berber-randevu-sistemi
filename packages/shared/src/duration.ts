@@ -97,9 +97,22 @@ export function formatServiceNames(services: readonly { name: string }[]): strin
  *
  * Hiçbir hizmetin fiyatı girilmemişse null döner (arayüz fiyatı gizler);
  * bir kısmı girilmişse girilenlerin toplamı döner.
+ *
+ * ⚠️ Her fiyat `Number()` ile geçiriliyor. Tip `number` diyor ama fiyat
+ * veritabanında Decimal ve JSON'a METİN olarak çıkabiliyor ("500"); metin
+ * geldiğinde `+` toplama değil BİRLEŞTİRME yapar ve hata sessizdir —
+ * canlıda tam olarak bu oldu: 500 + 2000 ekranda "5.002.000 ₺" göründü.
+ * Asıl düzeltme uçların sayı döndürmesi; buradaki dönüşüm aynı hatanın
+ * başka bir uçtan geri gelmemesi için.
  */
-export function sumServicePrices(services: readonly { price: number | null }[]): number | null {
-  const girilenler = services.filter((s) => s.price !== null && s.price !== undefined);
+export function sumServicePrices(
+  services: readonly { price: number | null }[],
+): number | null {
+  const girilenler = services
+    .filter((s) => s.price !== null && s.price !== undefined)
+    .map((s) => Number(s.price))
+    .filter((p) => !Number.isNaN(p));
+
   if (girilenler.length === 0) return null;
-  return girilenler.reduce((toplam, s) => toplam + (s.price ?? 0), 0);
+  return girilenler.reduce((toplam, p) => toplam + p, 0);
 }

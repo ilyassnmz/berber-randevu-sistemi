@@ -81,3 +81,14 @@ describe('formatServiceNames', () => {
     expect(formatServiceNames([{ name: 'Saç' }, { name: 'Ağda' }])).toBe('Saç + Ağda');
   });
 });
+
+describe('sumServicePrices — metin fiyat savunması', () => {
+  it('metin olarak gelen fiyatları BİRLEŞTİRMEZ, toplar', () => {
+    // Canlıda yaşandı: fiyatlar API'den "500" / "2000" olarak geldi ve
+    // ekranda 5.002.000 ₺ göründü.
+    const metinFiyatlar = [{ price: '500' }, { price: '2000' }] as unknown as Array<{
+      price: number | null;
+    }>;
+    expect(sumServicePrices(metinFiyatlar)).toBe(2500);
+  });
+});
