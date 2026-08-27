@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CalendarCheck, CalendarX2, AlertCircle, Phone, ChevronLeft } from 'lucide-react';
+import { sumServicePrices } from '@berber/shared';
 import { fetchAppointment, fetchShopInfo, cancelAppointment, ApiError } from '../lib/api';
 import { forgetToken } from '../lib/storage';
 import { formatAppointmentMoment, formatPrice } from '../lib/dates';
@@ -82,6 +83,29 @@ export default function AppointmentPage() {
   }
 
   const appointment = appointmentQuery.data.appointment;
+
+  /**
+   * Randevunun hizmetleri.
+   *
+   * `services` alanı yoksa (tarayıcıda önbelleğe alınmış eski bir yanıt)
+   * tek satırlık `serviceName` kullanılıyor — sayfa boş bir hizmet satırı
+   * göstermektense elindeki bilgiyi gösterir.
+   */
+  const hizmetler = appointment.services?.length
+    ? appointment.services
+    : [
+        {
+          name: appointment.serviceName,
+          // ⚠️ Number() şart: `servicePrice` veritabanında Decimal ve JSON'a
+          // METİN olarak çıkıyor ("200"). Toplama sokulduğunda sessizce
+          // birleştirme yapardı ("0" + "200").
+          price:
+            appointment.servicePrice === null ? null : Number(appointment.servicePrice),
+        },
+      ];
+
+  const toplamUcret = sumServicePrices(hizmetler);
+
   const isCancelled = appointment.status === 'cancelled';
   const isPast = new Date(appointment.startsAt).getTime() < Date.now();
   const canCancel = !isCancelled && !isPast;
@@ -114,10 +138,10 @@ export default function AppointmentPage() {
           <span>{appointment.barberName}</span>
         </div>
         <div className="summary-row">
-          <span>Hizmet</span>
+          <span>{hizmetler.length > 1 ? 'Hizmetler' : 'Hizmet'}</span>
           <span>
-            {appointment.serviceName}
-            {formatPrice(appointment.servicePrice) ? ` · ${formatPrice(appointment.servicePrice)}` : ''}
+            {hizmetler.map((h) => h.name).join(' + ')}
+            {formatPrice(toplamUcret) ? ` · ${formatPrice(toplamUcret)}` : ''}
           </span>
         </div>
         {isCancelled && appointment.cancelReason && (

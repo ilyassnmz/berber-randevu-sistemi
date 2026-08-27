@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
-import { slotsQuerySchema, publicBookingSchema } from '@berber/shared';
+import { slotsQuerySchema, publicBookingSchema, formatServiceNames } from '@berber/shared';
 import { isTest } from '../config/env.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { getAvailableSlotsWithReason } from '../services/appointments.js';
@@ -62,10 +62,15 @@ publicRouter.get(
 publicRouter.get(
   '/slots',
   asyncHandler(async (req, res) => {
-    const { barberId, serviceId, date } = slotsQuerySchema.parse(req.query);
+    const { barberId, serviceIds, date } = slotsQuerySchema.parse(req.query);
     const shop = await getPublicShop();
 
-    const { slots, reason } = await getAvailableSlotsWithReason(shop.id, barberId, serviceId, date);
+    const { slots, reason } = await getAvailableSlotsWithReason(
+      shop.id,
+      barberId,
+      serviceIds,
+      date,
+    );
 
     res.json({
       slots: slots.map((s) => ({
@@ -119,7 +124,7 @@ publicRouter.post(
 
     const { appointment, publicToken } = await createPublicAppointment({
       barberId: input.barberId,
-      serviceId: input.serviceId,
+      serviceIds: input.serviceIds,
       startsAt: new Date(input.startsAt),
       customerName: input.customerName,
       customerPhone: input.customerPhone,
@@ -132,9 +137,22 @@ publicRouter.post(
       token: publicToken,
       appointment: {
         startsAt: appointment.startsAt.toISOString(),
+        endsAt: appointment.endsAt.toISOString(),
         status: appointment.status,
         barberName: appointment.barber.name,
-        serviceName: appointment.service.name,
+        /**
+         * Randevudaki hizmetlerin tamamı.
+         *
+         * ⚠️ Aşağıdaki `serviceName`/`servicePrice` alanları BİLEREK duruyor:
+         * dağıtım anında sayfası AÇIK olan bir müşteri, tarayıcısında hâlâ
+         * eski JS'i çalıştırıyor ve o alanları okuyor. Kaldırılsalardı
+         * randevusunu tamamlayan müşteri hizmet satırını boş görürdü.
+         */
+        services: appointment.services.map((s) => ({
+          name: s.name,
+          price: s.price === null ? null : Number(s.price),
+        })),
+        serviceName: formatServiceNames(appointment.services),
         servicePrice: appointment.service.price,
         customerName: appointment.customer.name,
       },

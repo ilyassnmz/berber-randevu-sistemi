@@ -170,7 +170,10 @@ export function CustomerDetailModal({ customerId, onClose }: Props) {
                       <span>{formatTimeTr(a.startsAt)}</span>
                     </div>
                     <div className="customer-history-what">
-                      {a.service.name} · {a.barber.name}
+                      {a.services?.length
+                        ? a.services.map((s) => s.name).join(' + ')
+                        : a.service.name}{' '}
+                      · {a.barber.name}
                     </div>
                     <StatusBadge status={a.status} />
                   </div>

@@ -499,3 +499,59 @@
 .date-chip-closed:hover {
   border-color: var(--border);
 }
+
+/* ── Çoklu hizmet seçimi ─────────────────────────────────
+   Hizmet adımı artık tek seçimli değil: müşteri "saç + ağda" seçebiliyor.
+   Kart görünümü aynı kaldı, başına bir işaret kutucuğu eklendi — seçimin
+   kalıcı olduğunu (dokununca ilerlemediğini) göstermenin en açık yolu. */
+.option-card-multi {
+  gap: 12px;
+}
+
+.option-card-multi .option-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Kutucuk seçili olmasa da yer kaplar; yoksa seçim yapıldıkça
+   satırdaki metin yana kayıyor ve liste titriyor. */
+.option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  color: var(--accent);
+}
+
+.option-card-multi.selected .option-check {
+  border-color: var(--accent);
+}
+
+/* Seçim özeti: toplam süre ve ücret. Çoklu seçimde süre sezgiye aykırı
+   (iki hizmet genelde süreyi uzatmaz, lazer uzatır) — müşteri onaylamadan
+   önce ne kadar zaman ayırdığını görmeli. */
+.selection-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 12px;
+  padding: 12px 14px;
+  background: var(--surface-raised);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+
+.selection-summary-names {
+  font-weight: 560;
+  min-width: 0;
+}
+
+.selection-summary-meta {
+  color: var(--text-dim);
+  white-space: nowrap;
+}

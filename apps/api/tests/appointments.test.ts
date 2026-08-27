@@ -733,7 +733,7 @@ describe('İleri tarih sınırı yalnızca müşteri tarafına uygulanır', () =
       createAppointment({
         shopId: fx.shopId,
         barberId: fx.adminId,
-        serviceId: fx.serviceId,
+        serviceIds: [fx.serviceId],
         startsAt: zonedTimeToUtc(farDate, SLOT_TIME, TZ),
         customerName: 'Uzak Tarih Müşterisi',
         customerPhone: '+905559998877',
@@ -750,7 +750,7 @@ describe('İleri tarih sınırı yalnızca müşteri tarafına uygulanır', () =
     const appointment = await createAppointment({
       shopId: fx.shopId,
       barberId: fx.adminId,
-      serviceId: fx.serviceId,
+      serviceIds: [fx.serviceId],
       startsAt: zonedTimeToUtc(nearDate, SLOT_TIME, TZ),
       customerName: 'Yakın Tarih Müşterisi',
       customerPhone: '+905559998877',
@@ -763,7 +763,7 @@ describe('İleri tarih sınırı yalnızca müşteri tarafına uygulanır', () =
 
   it('müşteriye 7 gün ötesi için hiç saat gösterilmez', async () => {
     // auth verilmiyor → çağıran müşteri tarafı (site/chatbot)
-    const slots = await getAvailableSlots(fx.shopId, fx.adminId, fx.serviceId, farDate);
+    const slots = await getAvailableSlots(fx.shopId, fx.adminId, [fx.serviceId], farDate);
     expect(slots).toHaveLength(0);
   });
 
@@ -771,7 +771,7 @@ describe('İleri tarih sınırı yalnızca müşteri tarafına uygulanır', () =
     const appointment = await createAppointment({
       shopId: fx.shopId,
       barberId: fx.adminId,
-      serviceId: fx.serviceId,
+      serviceIds: [fx.serviceId],
       startsAt: zonedTimeToUtc(farDate, SLOT_TIME, TZ),
       customerName: 'Düğün Müşterisi',
       customerPhone: '+905557776655',
@@ -821,7 +821,7 @@ describe('GET / — tarih aralığı (from/to) filtresi', () => {
     return createAppointment({
       shopId: fx.shopId,
       barberId: fx.adminId,
-      serviceId: fx.serviceId,
+      serviceIds: [fx.serviceId],
       startsAt: zonedTimeToUtc(date, saat, TZ),
       customerName: 'Aralık Testi',
       source: 'panel',
@@ -890,7 +890,7 @@ describe('Aynı cihazdan toplu iptal', () => {
     return createAppointment({
       shopId: fx.shopId,
       barberId,
-      serviceId: fx.serviceId,
+      serviceIds: [fx.serviceId],
       startsAt: zonedTimeToUtc(ileriGun(gun), '09:00', TZ),
       customerName: 'Sahte ' + telefon.slice(-4),
       customerPhone: telefon,
@@ -954,7 +954,7 @@ describe('Aynı cihazdan toplu iptal', () => {
     const panelRandevusu = await createAppointment({
       shopId: fx.shopId,
       barberId: fx.adminId,
-      serviceId: fx.serviceId,
+      serviceIds: [fx.serviceId],
       startsAt: zonedTimeToUtc(ileriGun(5), '09:00', TZ),
       customerName: 'Panel Müşterisi',
       source: 'panel',
@@ -1155,7 +1155,7 @@ describe('DELETE /services/:id — hizmet kaldırma', () => {
     await createAppointment({
       shopId: fx.shopId,
       barberId: fx.adminId,
-      serviceId: h.id,
+      serviceIds: [h.id],
       startsAt: zonedTimeToUtc(TEST_DATE, '09:00', TZ),
       customerName: 'Kaş Müşterisi',
       source: 'panel',
@@ -1181,7 +1181,7 @@ describe('DELETE /services/:id — hizmet kaldırma', () => {
     const randevu = await createAppointment({
       shopId: fx.shopId,
       barberId: fx.adminId,
-      serviceId: h.id,
+      serviceIds: [h.id],
       startsAt: zonedTimeToUtc(TEST_DATE, '09:00', TZ),
       customerName: 'Kaş Müşterisi',
       source: 'panel',
@@ -1303,7 +1303,7 @@ describe('Geçmiş saatler — gün görünümü', () => {
       createAppointment({
         shopId: fx.shopId,
         barberId: fx.adminId,
-        serviceId: fx.serviceId,
+        serviceIds: [fx.serviceId],
         startsAt: gecmisSaat,
         customerName: 'Geçmiş Randevu Denemesi',
         source: 'panel',
@@ -1331,5 +1331,210 @@ describe('Geçmiş saatler — gün görünümü', () => {
       const etiketler = res.body.slots.map((x: { label: string }) => x.label);
       expect(etiketler).not.toContain('09:00');
     }
+  });
+});
+
+/**
+ * ══════════════════════════════════════════════════════════════════
+ *  ÇOKLU HİZMET
+ * ══════════════════════════════════════════════════════════════════
+ *
+ * Kuralın tamamı burada kanıtlanıyor:
+ *   * Aynı oturumda yapılabilen iki hizmet süreyi UZATMAZ.
+ *   * "Ayrı zaman isteyen" hizmet, yanında başka hizmet varken uzatır.
+ *   * Ama tek başına seçilirse uzatmaz.
+ *
+ * Süre birim testlerde de var (packages/shared); buradaki testler o kuralın
+ * gerçekten VERİTABANINA yazıldığını, yani `endsAt` ile takvimin uyuştuğunu
+ * gösteriyor. İkisi ayrışırsa slotlar yanlış hesaplanır ve randevular üst
+ * üste biner.
+ */
+describe('Çoklu hizmet', () => {
+  /**
+   * Ek hizmetler BU BLOĞA ait — ortak fixture'a konmadı.
+   *
+   * Konulduğunda, dükkanda kaç hizmet olduğuna dayanan testler ("son aktif
+   * hizmeti kaldırmayı reddeder") sessizce anlamsızlaştı: kural hiç
+   * tetiklenmediği halde test geçmeye devam etti.
+   */
+  let ekHizmetId: string;
+  let ayriZamanHizmetId: string;
+
+  beforeAll(async () => {
+    const [ek, ayri] = await Promise.all([
+      testPrisma.service.create({
+        data: { shopId: fx.shopId, name: 'Çoklu Ek Hizmet', durationMin: 45, sortOrder: 20 },
+      }),
+      testPrisma.service.create({
+        data: {
+          shopId: fx.shopId,
+          name: 'Çoklu Ayrı Zaman',
+          durationMin: 45,
+          sortOrder: 21,
+          requiresOwnSlot: true,
+        },
+      }),
+    ]);
+    ekHizmetId = ek.id;
+    ayriZamanHizmetId = ayri.id;
+  });
+
+  function dakikaFarki(startsAt: string, endsAt: string): number {
+    return (new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 60_000;
+  }
+
+  it('iki hizmet seçmek randevu süresini uzatmaz', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceIds: [fx.serviceId, ekHizmetId],
+        startsAt: slotAt('10:30'),
+        customerName: 'Çift Hizmet',
+      });
+
+    expect(res.status).toBe(201);
+    expect(dakikaFarki(res.body.appointment.startsAt, res.body.appointment.endsAt)).toBe(45);
+
+    // Her iki hizmet de randevuya bağlanmış olmalı — biri sessizce
+    // düşseydi berber müşterinin ağda da istediğini hiç göremezdi.
+    const adlar = res.body.appointment.services.map((s: { name: string }) => s.name);
+    expect(adlar).toEqual(['Test Hizmet', 'Çoklu Ek Hizmet']);
+  });
+
+  it('"ayrı zaman isteyen" hizmet eklendiğinde randevu iki slot kaplar', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceIds: [fx.serviceId, ayriZamanHizmetId],
+        startsAt: slotAt('10:30'),
+        customerName: 'Lazer Müşterisi',
+      });
+
+    expect(res.status).toBe(201);
+    expect(dakikaFarki(res.body.appointment.startsAt, res.body.appointment.endsAt)).toBe(90);
+  });
+
+  it('"ayrı zaman isteyen" hizmet TEK BAŞINA seçilirse randevuyu uzatmaz', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceIds: [ayriZamanHizmetId],
+        startsAt: slotAt('10:30'),
+        customerName: 'Yalnız Lazer',
+      });
+
+    expect(res.status).toBe(201);
+    expect(dakikaFarki(res.body.appointment.startsAt, res.body.appointment.endsAt)).toBe(45);
+  });
+
+  it('90 dakikalık randevu, sonraki slotu da gerçekten kapatır', async () => {
+    // Asıl mesele bu: süre yalnızca ekranda değil, takvimde de uzamalı.
+    await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceIds: [fx.serviceId, ayriZamanHizmetId],
+        startsAt: slotAt('10:30'),
+        customerName: 'Uzun Randevu',
+      })
+      .expect(201);
+
+    // 10:30 + 90 dk = 12:00. Izgara 09:00'dan 45'er dakika ilerlediği için
+    // 11:15 başlangıcı bu randevunun içinde kalıyor ve alınamamalı.
+    const cakisan = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceIds: [fx.serviceId],
+        startsAt: slotAt('11:15'),
+        customerName: 'Çakışan',
+      });
+
+    expect(cakisan.status).toBe(409);
+  });
+
+  it('saat listesi seçilen hizmetlere göre daralır', async () => {
+    // Uzun bir randevu için gün sonuna yakın başlangıçlar sığmaz; kısa
+    // randevu için sığar. Aynı gün, aynı berber, tek fark hizmet kümesi.
+    const tek = await request(app)
+      .get(`${BASE}/slots`)
+      .set(auth(adminToken))
+      .query({ barberId: fx.adminId, serviceIds: fx.serviceId, date: TEST_DATE });
+
+    const cift = await request(app)
+      .get(`${BASE}/slots`)
+      .set(auth(adminToken))
+      .query({
+        barberId: fx.adminId,
+        serviceIds: `${fx.serviceId},${ayriZamanHizmetId}`,
+        date: TEST_DATE,
+      });
+
+    expect(tek.status).toBe(200);
+    expect(cift.status).toBe(200);
+    expect(cift.body.slots.length).toBeLessThan(tek.body.slots.length);
+  });
+
+  it('eski istemcinin gönderdiği tekil serviceId hâlâ kabul edilir', async () => {
+    // Telefondaki önbelleğe alınmış eski panel/site sürümü bir süre daha
+    // bu biçimi gönderiyor; reddedilseydi güncelleme anında randevu
+    // alınamaz olurdu.
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceId: fx.serviceId,
+        startsAt: slotAt('12:00'),
+        customerName: 'Eski İstemci',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.appointment.services).toHaveLength(1);
+  });
+
+  it('hizmetsiz randevu reddedilir', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceIds: [],
+        startsAt: slotAt('13:00'),
+        customerName: 'Hizmetsiz',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('saati değiştirilen çok hizmetli randevu süresini korur', async () => {
+    const olustur = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        barberId: fx.adminId,
+        serviceIds: [fx.serviceId, ayriZamanHizmetId],
+        startsAt: slotAt('10:30'),
+        customerName: 'Ertelenen',
+      })
+      .expect(201);
+
+    const res = await request(app)
+      .post(`${BASE}/${olustur.body.appointment.id}/reschedule`)
+      .set(auth(adminToken))
+      .send({ startsAt: slotAt('14:15') });
+
+    expect(res.status).toBe(200);
+    // Süre randevunun ANA hizmetinden değil, kümesinin tamamından
+    // hesaplanmalı; aksi halde 90 dakikalık randevu 45 dakikaya düşerdi.
+    expect(dakikaFarki(res.body.appointment.startsAt, res.body.appointment.endsAt)).toBe(90);
   });
 });

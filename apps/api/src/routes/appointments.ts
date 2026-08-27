@@ -6,6 +6,7 @@ import {
   rescheduleAppointmentSchema,
   listAppointmentsQuerySchema,
   APPOINTMENT_SOURCE,
+  formatServiceNames,
 } from '@berber/shared';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { requireAuth, assertCanAccessBarber, resolveBarberFilter } from '../middleware/auth.js';
@@ -36,7 +37,7 @@ appointmentsRouter.use(requireAuth);
 appointmentsRouter.get(
   '/slots',
   asyncHandler(async (req, res) => {
-    const { barberId, serviceId, date } = slotsQuerySchema.parse(req.query);
+    const { barberId, serviceIds, date } = slotsQuerySchema.parse(req.query);
     const auth = req.auth!;
 
     // Fırat başka berberin takvimini sorgulayamaz
@@ -53,7 +54,7 @@ appointmentsRouter.get(
     const slots = await getAvailableSlots(
       auth.shopId,
       barberId,
-      serviceId,
+      serviceIds,
       date,
       new Date(),
       auth,
@@ -144,7 +145,7 @@ appointmentsRouter.post(
     const appointment = await createAppointment({
       shopId: auth.shopId,
       barberId: input.barberId,
-      serviceId: input.serviceId,
+      serviceIds: input.serviceIds,
       startsAt,
       customerName: input.customerName,
       customerPhone: input.customerPhone,
@@ -270,7 +271,7 @@ appointmentsRouter.get(
         startsAt: a.startsAt.toISOString(),
         customerName: a.customer.name,
         barberName: a.barber.name,
-        serviceName: a.service.name,
+        serviceName: formatServiceNames(a.services),
       })),
     });
   }),

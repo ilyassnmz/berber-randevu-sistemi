@@ -12,7 +12,12 @@ import {
   Sun,
   Moon,
 } from 'lucide-react';
-import { normalizePhone } from '@berber/shared';
+import {
+  normalizePhone,
+  computeAppointmentDuration,
+  sumServicePrices,
+  MAX_SERVICES_PER_APPOINTMENT,
+} from '@berber/shared';
 import { fetchShopInfo, fetchSlots, createAppointment, ApiError } from '../lib/api';
 import { storeToken, getStoredTokens } from '../lib/storage';
 import { getStoredTheme, toggleTheme, type Theme } from '../lib/theme';
@@ -48,7 +53,16 @@ export default function BookingPage() {
   const shopQuery = useQuery({ queryKey: ['shop'], queryFn: fetchShopInfo });
 
   const [step, setStep] = useState<Step>('service');
-  const [serviceId, setServiceId] = useState<string | null>(null);
+
+  /**
+   * Seçilen hizmetler.
+   *
+   * Müşteri birden fazla hizmet seçebiliyor ("saç + ağda"). Süreler
+   * TOPLANMIYOR — ikisi aynı oturumda yapılıyor; yalnızca "ayrı zaman
+   * isteyen" hizmetler (lazer) randevuyu uzatıyor. Bu yüzden seçim tek
+   * seçimli bir liste değil, işaretlenebilir bir küme.
+   */
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [barberId, setBarberId] = useState<string | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [startsAt, setStartsAt] = useState<string | null>(null);
@@ -66,8 +80,17 @@ export default function BookingPage() {
   const barbers = info?.barbers ?? [];
   const timezone = info?.shop.timezone ?? 'Europe/Istanbul';
 
-  const service = services.find((s) => s.id === serviceId) ?? null;
+  const selectedServices = services.filter((s) => serviceIds.includes(s.id));
   const barber = barbers.find((b) => b.id === barberId) ?? null;
+
+  /** "Saç + Ağda" — seçilen hizmetlerin tek satırlık gösterimi. */
+  const serviceLabel = selectedServices.map((s) => s.name).join(' + ');
+
+  // Süre ve ücret sunucudakiyle AYNI fonksiyonlardan hesaplanıyor; ekranda
+  // yazan ile takvimde ayrılan süre ayrışamaz.
+  const totalDuration =
+    selectedServices.length > 0 ? computeAppointmentDuration(selectedServices) : 0;
+  const totalPrice = sumServicePrices(selectedServices);
 
   // Tarih şeridi: bugün + sunucunun izin verdiği kadar ileri gün.
   // Sınır burada sabit yazılmıyor; kaynağı veritabanı.
@@ -75,16 +98,16 @@ export default function BookingPage() {
   const activeDate = date ?? dateStrip[0] ?? null;
 
   const slotsQuery = useQuery({
-    queryKey: ['slots', barberId, serviceId, activeDate],
-    queryFn: () => fetchSlots(barberId!, serviceId!, activeDate!),
-    enabled: step === 'time' && Boolean(barberId && serviceId && activeDate),
+    queryKey: ['slots', barberId, serviceIds.join(','), activeDate],
+    queryFn: () => fetchSlots(barberId!, serviceIds, activeDate!),
+    enabled: step === 'time' && Boolean(barberId && serviceIds.length > 0 && activeDate),
   });
 
   const mutation = useMutation({
     mutationFn: () =>
       createAppointment({
         barberId: barberId!,
-        serviceId: serviceId!,
+        serviceIds,
         startsAt: startsAt!,
         customerName: customerName.trim(),
         customerPhone: phone.trim(),
@@ -100,11 +123,26 @@ export default function BookingPage() {
     },
   });
 
-  function handleServicePick(id: string) {
-    setServiceId(id);
-    // Saat listesi hizmetin süresine bağlı; hizmet değişince seçili saat
-    // artık geçerli olmayabilir.
-    setStartsAt(null);
+  /**
+   * Hizmeti seçime ekler ya da çıkarır.
+   *
+   * ⚠️ Seçim ARTIK bir sonraki adıma GEÇİRMİYOR. Tek hizmet seçilirken
+   * dokunmak doğrudan ilerletiyordu; çoklu seçimde bu, ikinci hizmeti
+   * seçmeye fırsat vermeden akışı öne atardı. Devam etmek artık ayrı bir
+   * düğme — müşteri seçimini bitirdiğinde basıyor.
+   */
+  function toggleService(id: string) {
+    setStartsAt(null); // saat listesi süreye bağlı; seçim değişince geçersiz
+
+    setServiceIds((current) => {
+      if (current.includes(id)) return current.filter((x) => x !== id);
+      if (current.length >= MAX_SERVICES_PER_APPOINTMENT) return current;
+      return [...current, id];
+    });
+  }
+
+  function handleServiceContinue() {
+    if (serviceIds.length === 0) return;
 
     if (barbers.length === 1) {
       setBarberId(barbers[0]!.id);
@@ -149,7 +187,7 @@ export default function BookingPage() {
   function startOver() {
     setCreated(null);
     setStep('service');
-    setServiceId(null);
+    setServiceIds([]);
     setBarberId(null);
     setDate(null);
     setStartsAt(null);
@@ -197,7 +235,12 @@ export default function BookingPage() {
         <p className="result-text">
           {formatAppointmentMoment(created.appointment.startsAt, timezone)}
           <br />
-          {created.appointment.barberName} · {created.appointment.serviceName}
+          {created.appointment.barberName} ·{' '}
+          {/* Sunucu hizmetlerin tamamını dönüyor; `serviceName` eski
+              sürümlerle uyum için duruyor ve burada yedek olarak kullanılıyor. */}
+          {created.appointment.services?.length
+            ? created.appointment.services.map((s) => s.name).join(' + ')
+            : created.appointment.serviceName}
         </p>
 
         <div className="notice notice-info">
@@ -282,8 +325,8 @@ export default function BookingPage() {
             </Link>
           )}
 
-          <h2 className="step-title">Hangi hizmeti istiyorsunuz?</h2>
-          <p className="step-hint">Süre ve ücret bilgisi aşağıda.</p>
+          <h2 className="step-title">Hangi hizmetleri istiyorsunuz?</h2>
+          <p className="step-hint">Birden fazla seçebilirsiniz.</p>
 
           {services.length === 0 ? (
             <div className="state-message">
@@ -291,25 +334,61 @@ export default function BookingPage() {
               <span>Şu anda tanımlı hizmet yok. Lütfen bizi arayın.</span>
             </div>
           ) : (
-            <div className="option-list">
-              {services.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className="option-card"
-                  aria-pressed={serviceId === s.id}
-                  onClick={() => handleServicePick(s.id)}
-                >
-                  <span>
-                    <span className="option-name">{s.name}</span>
-                    <span className="option-meta">{formatDuration(s.durationMin)}</span>
+            <>
+              <div className="option-list">
+                {services.map((s) => {
+                  const secili = serviceIds.includes(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={`option-card option-card-multi${secili ? ' selected' : ''}`}
+                      aria-pressed={secili}
+                      onClick={() => toggleService(s.id)}
+                    >
+                      {/* Kutucuk seçili değilken de yer kaplıyor: aksi halde
+                          seçim yapıldıkça satırlar yana kayıyor. */}
+                      <span className="option-check" aria-hidden>
+                        {secili && <Check size={14} />}
+                      </span>
+                      <span className="option-body">
+                        <span className="option-name">{s.name}</span>
+                        <span className="option-meta">{formatDuration(s.durationMin)}</span>
+                      </span>
+                      {formatPrice(s.price) && (
+                        <span className="option-price">{formatPrice(s.price)}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/*
+                Seçim özeti.
+                Toplam SÜRE burada gösteriliyor çünkü çoklu seçimde sezgiye
+                aykırı: iki hizmet seçmek süreyi genelde uzatmıyor, ama lazer
+                eklemek uzatıyor. Müşteri ne kadar zaman ayırdığını randevuyu
+                onaylamadan önce görmeli.
+              */}
+              {selectedServices.length > 0 && (
+                <div className="selection-summary">
+                  <span className="selection-summary-names">{serviceLabel}</span>
+                  <span className="selection-summary-meta">
+                    {formatDuration(totalDuration)}
+                    {formatPrice(totalPrice) ? ` · ${formatPrice(totalPrice)}` : ''}
                   </span>
-                  {formatPrice(s.price) && (
-                    <span className="option-price">{formatPrice(s.price)}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-primary btn-block"
+                disabled={selectedServices.length === 0}
+                onClick={handleServiceContinue}
+              >
+                Devam
+              </button>
+            </>
           )}
         </>
       )}
@@ -318,7 +397,7 @@ export default function BookingPage() {
       {step === 'barber' && (
         <>
           <h2 className="step-title">Berberinizi seçin</h2>
-          <p className="step-hint">{service?.name}</p>
+          <p className="step-hint">{serviceLabel}</p>
 
           <div className="option-list">
             {barbers.map((b) => (
@@ -341,7 +420,7 @@ export default function BookingPage() {
         <>
           <h2 className="step-title">Gün ve saat seçin</h2>
           <p className="step-hint">
-            {service?.name}
+            {serviceLabel}
             {barber ? ` · ${barber.name}` : ''}
           </p>
 
@@ -448,11 +527,16 @@ export default function BookingPage() {
 
           <div className="summary">
             <div className="summary-row">
-              <span>Hizmet</span>
+              <span>{selectedServices.length > 1 ? 'Hizmetler' : 'Hizmet'}</span>
               <span>
-                {service?.name}
-                {formatPrice(service?.price ?? null) ? ` · ${formatPrice(service!.price)}` : ''}
+                {serviceLabel}
+                {/* Ücretler toplanır; süre ise seçime göre hesaplanır. */}
+                {formatPrice(totalPrice) ? ` · ${formatPrice(totalPrice)}` : ''}
               </span>
+            </div>
+            <div className="summary-row">
+              <span>Süre</span>
+              <span>{formatDuration(totalDuration)}</span>
             </div>
             <div className="summary-row">
               <span>Berber</span>

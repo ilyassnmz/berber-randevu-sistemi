@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { normalizePhone } from './phone.js';
 import { APPOINTMENT_STATUS, CANCELLED_BY, BARBER_ROLE } from './constants.js';
+import { MAX_SERVICES_PER_APPOINTMENT } from './duration.js';
 
 /**
  * API giriş şemaları. Backend doğrulama için, frontend form doğrulaması için
@@ -53,13 +54,95 @@ export const changePasswordSchema = z
   });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+// ─── Hizmet seçimi ──────────────────────────────────────
+
+/**
+ * Bir randevunun hizmet listesini çözer.
+ *
+ * ⚠️ Tekil `serviceId` alanı BİLEREK kabul edilmeye devam ediyor.
+ *
+ * Panel ve müşteri sitesi birer PWA; telefonda önbelleğe alınmış ESKİ bir
+ * sürüm, sunucu güncellendikten sonra da bir süre çalışmaya devam edebiliyor
+ * (bu daha önce gerçekten yaşandı — bkz. DURUM.md, service worker sorunu).
+ * Eski sürüm tekil `serviceId` gönderiyor. Bu alan kaldırılsaydı, güncelleme
+ * anında telefonundaki eski siteyle randevu almaya çalışan müşteri
+ * "Geçersiz istek" hatası alırdı.
+ */
+function hizmetListesiniCoz(
+  serviceIds: readonly string[] | undefined,
+  serviceId: string | undefined,
+  ctx: z.RefinementCtx,
+): string[] {
+  const secilenler = serviceIds ?? (serviceId ? [serviceId] : []);
+  const benzersiz = [...new Set(secilenler)];
+
+  if (benzersiz.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'En az bir hizmet seçilmeli',
+      path: ['serviceIds'],
+    });
+  }
+
+  if (benzersiz.length > MAX_SERVICES_PER_APPOINTMENT) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `En fazla ${MAX_SERVICES_PER_APPOINTMENT} hizmet seçebilirsiniz`,
+      path: ['serviceIds'],
+    });
+  }
+
+  return benzersiz;
+}
+
+const serviceIdsSchema = z.array(uuidSchema).max(MAX_SERVICES_PER_APPOINTMENT).optional();
+
 // ─── Slot sorgusu ───────────────────────────────────────
 
-export const slotsQuerySchema = z.object({
-  barberId: uuidSchema,
-  serviceId: uuidSchema,
-  date: localDateSchema,
-});
+/**
+ * Boş saat sorgusu.
+ *
+ * Saat listesi seçilen hizmetlere BAĞLI: hizmet kümesi randevunun süresini
+ * belirliyor, süre de hangi başlangıçların sığdığını. Bu yüzden sorguya tek
+ * hizmet değil, seçilen hizmetlerin tamamı gidiyor.
+ *
+ * Sorgu dizesinde dizi taşımanın en dayanıklı yolu virgülle ayırmak:
+ * `?serviceIds=<id>,<id>`.
+ */
+export const slotsQuerySchema = z
+  .object({
+    barberId: uuidSchema,
+    serviceIds: z.string().optional(),
+    /** Eski istemciler için — bkz. hizmetListesiniCoz. */
+    serviceId: uuidSchema.optional(),
+    date: localDateSchema,
+  })
+  .transform((query, ctx) => {
+    const ayrilmis = query.serviceIds
+      ? query.serviceIds
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : undefined;
+
+    // Virgülle gelen kimlikler tek tek doğrulanmalı; dizeyi bölmek
+    // doğrulama yapmaz.
+    for (const id of ayrilmis ?? []) {
+      if (!uuidSchema.safeParse(id).success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Geçersiz hizmet kimliği',
+          path: ['serviceIds'],
+        });
+      }
+    }
+
+    return {
+      barberId: query.barberId,
+      date: query.date,
+      serviceIds: hizmetListesiniCoz(ayrilmis, query.serviceId, ctx),
+    };
+  });
 export type SlotsQuery = z.infer<typeof slotsQuerySchema>;
 
 // ─── Randevu ────────────────────────────────────────────
@@ -68,15 +151,23 @@ export type SlotsQuery = z.infer<typeof slotsQuerySchema>;
  * Panelden manuel (walk-in) randevu oluşturma.
  * Telefon opsiyonel — kapıdan gelen müşterinin numarasını vermek istemeyebilir.
  */
-export const createAppointmentSchema = z.object({
-  barberId: uuidSchema,
-  serviceId: uuidSchema,
-  /** ISO 8601, saat dilimi bilgisi dahil. Örn: 2026-08-12T09:00:00+03:00 */
-  startsAt: z.string().datetime({ offset: true }),
-  customerName: z.string().trim().min(1, 'Müşteri adı gerekli').max(120),
-  customerPhone: phoneSchema.optional(),
-  notifyCustomer: z.boolean().optional().default(false),
-});
+export const createAppointmentSchema = z
+  .object({
+    barberId: uuidSchema,
+    /** Birden fazla hizmet seçilebilir: "Saç + Ağda". */
+    serviceIds: serviceIdsSchema,
+    /** Eski istemciler için — bkz. hizmetListesiniCoz. */
+    serviceId: uuidSchema.optional(),
+    /** ISO 8601, saat dilimi bilgisi dahil. Örn: 2026-08-12T09:00:00+03:00 */
+    startsAt: z.string().datetime({ offset: true }),
+    customerName: z.string().trim().min(1, 'Müşteri adı gerekli').max(120),
+    customerPhone: phoneSchema.optional(),
+    notifyCustomer: z.boolean().optional().default(false),
+  })
+  .transform((input, ctx) => ({
+    ...input,
+    serviceIds: hizmetListesiniCoz(input.serviceIds, input.serviceId, ctx),
+  }));
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
 
 export const cancelAppointmentSchema = z.object({
@@ -104,14 +195,22 @@ export type RescheduleAppointmentInput = z.infer<typeof rescheduleAppointmentSch
  *      verememeli; site tarafı bunu isteyip sunucuyu mesaj göndermeye
  *      zorlayabilseydi kötüye kullanılırdı.
  */
-export const publicBookingSchema = z.object({
-  barberId: uuidSchema,
-  serviceId: uuidSchema,
-  /** ISO 8601, saat dilimi bilgisi dahil. */
-  startsAt: z.string().datetime({ offset: true }),
-  customerName: z.string().trim().min(2, 'Adınızı ve soyadınızı yazın').max(120),
-  customerPhone: phoneSchema,
-});
+export const publicBookingSchema = z
+  .object({
+    barberId: uuidSchema,
+    /** Birden fazla hizmet seçilebilir: "Saç + Ağda". */
+    serviceIds: serviceIdsSchema,
+    /** Eski istemciler için — bkz. hizmetListesiniCoz. */
+    serviceId: uuidSchema.optional(),
+    /** ISO 8601, saat dilimi bilgisi dahil. */
+    startsAt: z.string().datetime({ offset: true }),
+    customerName: z.string().trim().min(2, 'Adınızı ve soyadınızı yazın').max(120),
+    customerPhone: phoneSchema,
+  })
+  .transform((input, ctx) => ({
+    ...input,
+    serviceIds: hizmetListesiniCoz(input.serviceIds, input.serviceId, ctx),
+  }));
 export type PublicBookingInput = z.infer<typeof publicBookingSchema>;
 
 export const listAppointmentsQuerySchema = z.object({
@@ -228,6 +327,12 @@ export const upsertServiceSchema = z.object({
     .min(5, 'Süre en az 5 dakika olmalı')
     .max(480, 'Süre en fazla 8 saat olabilir'),
   price: z.number().nonnegative().max(1_000_000).nullable().optional(),
+  /**
+   * Bu hizmet başka bir hizmetle birlikte seçilirse randevu bir oturum daha
+   * uzar (bkz. duration.ts). Lazer için işaretli; diğerleri aynı oturumda
+   * yapılabiliyor.
+   */
+  requiresOwnSlot: z.boolean().optional().default(false),
   isActive: z.boolean().optional().default(true),
   sortOrder: z.number().int().min(0).optional(),
 });

@@ -36,6 +36,22 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
   const isActive = ACTIVE_STATUSES.has(appointment.status);
 
   /**
+   * Randevunun hizmetleri.
+   *
+   * `services` yoksa (telefonda önbellekte kalmış eski bir yanıt) ana hizmete
+   * düşülüyor — randevu detayı boş bir hizmet satırı göstermektense eksik
+   * ama doğru bir satır göstersin.
+   */
+  const hizmetler = appointment.services?.length ? appointment.services : [appointment.service];
+
+  const toplamUcret = (() => {
+    const girilenler = hizmetler
+      .map((s) => (s.price === null || s.price === undefined ? null : Number(s.price)))
+      .filter((p): p is number => p !== null && !Number.isNaN(p));
+    return girilenler.length > 0 ? String(girilenler.reduce((a, b) => a + b, 0)) : null;
+  })();
+
+  /**
    * Aynı cihazdan gelen diğer randevular.
    *
    * Yalnızca siteden alınan randevularda anlamlı; panelden girilenlerde
@@ -145,12 +161,12 @@ export function AppointmentDetailModal({ appointment, date, onClose }: Props) {
             )}
           </div>
           <div className="detail-row">
-            <span>Hizmet</span>
+            <span>{hizmetler.length > 1 ? 'Hizmetler' : 'Hizmet'}</span>
             <span>
-              {appointment.service.name}
-              {formatPrice(appointment.service.price) && (
-                <strong> · {formatPrice(appointment.service.price)}</strong>
-              )}
+              {hizmetler.map((s) => s.name).join(' + ')}
+              {/* Ücretler TOPLANIR — süreden farklı olarak, iki hizmet aynı
+                  oturumda yapılsa bile ikisinin de parası alınıyor. */}
+              {formatPrice(toplamUcret) && <strong> · {formatPrice(toplamUcret)}</strong>}
             </span>
           </div>
           <div className="detail-row">

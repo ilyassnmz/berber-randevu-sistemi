@@ -23,13 +23,20 @@ function generatePassword(): string {
   return randomBytes(18).toString('base64url');
 }
 
-/** todo.md → Proje Künyesi: hepsi şimdilik 45 dakika. */
+/**
+ * todo.md → Proje Künyesi: hepsi şimdilik 45 dakika.
+ *
+ * `requiresOwnSlot`: müşteri birden fazla hizmet seçtiğinde süreler
+ * toplanmıyor — saç ile ağda aynı oturumda yapılıyor. Lazer istisna:
+ * yanında başka bir hizmet varken randevuya kendi süresini ekliyor.
+ * Kural hizmet adına değil bu işarete bakıyor (bkz. shared/duration.ts).
+ */
 const SERVICES = [
   { name: 'Saç', durationMin: 45, sortOrder: 1 },
   { name: 'Sakal', durationMin: 45, sortOrder: 2 },
   { name: 'Saç + Sakal', durationMin: 45, sortOrder: 3 },
   { name: 'Ağda', durationMin: 45, sortOrder: 4 },
-  { name: 'Lazer', durationMin: 45, sortOrder: 5 },
+  { name: 'Lazer', durationMin: 45, sortOrder: 5, requiresOwnSlot: true },
   { name: 'Saç Boyama', durationMin: 45, sortOrder: 6 },
 ] as const;
 

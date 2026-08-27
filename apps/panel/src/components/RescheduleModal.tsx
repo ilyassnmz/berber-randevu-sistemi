@@ -24,10 +24,14 @@ export function RescheduleModal({ appointment, onClose, onRescheduled }: Props) 
   const [date, setDate] = useState(todayLocalDate());
   const [error, setError] = useState<string | null>(null);
 
+  // Randevunun hizmetlerinin TAMAMI sorulmalı: "Saç + Lazer" randevusu 90
+  // dakika sürüyor ve 45 dakikalık bir boşluğa taşınamaz. Alan yoksa (eski
+  // önbellekten gelen yanıt) ana hizmete düşülüyor.
+  const serviceIds = appointment.services?.map((s) => s.id) ?? [appointment.serviceId];
+
   const slotsQuery = useQuery({
-    queryKey: ['slots', appointment.barberId, appointment.serviceId, date],
-    queryFn: () =>
-      fetchSlots({ barberId: appointment.barberId, serviceId: appointment.serviceId, date }),
+    queryKey: ['slots', appointment.barberId, serviceIds.join(','), date],
+    queryFn: () => fetchSlots({ barberId: appointment.barberId, serviceIds, date }),
   });
 
   const mutation = useMutation({

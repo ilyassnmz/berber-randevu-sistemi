@@ -58,12 +58,19 @@ export function fetchShopInfo(): Promise<ShopInfo> {
   return callApi<ShopInfo>('/shop');
 }
 
+/**
+ * Boş saatler.
+ *
+ * Hizmetlerin TAMAMI gönderiliyor: saat listesi randevunun süresine bağlı ve
+ * süre seçilen kümeden hesaplanıyor ("Saç + Lazer" 90 dakika sürüyor, 45
+ * dakikalık boşluklar bu randevuya uygun değil).
+ */
 export function fetchSlots(
   barberId: string,
-  serviceId: string,
+  serviceIds: string[],
   date: string,
 ): Promise<{ slots: Slot[]; reason: EmptySlotsReason | null }> {
-  const query = new URLSearchParams({ barberId, serviceId, date });
+  const query = new URLSearchParams({ barberId, serviceIds: serviceIds.join(','), date });
   return callApi<{ slots: Slot[]; reason: EmptySlotsReason | null }>(
     `/slots?${query.toString()}`,
   );
@@ -71,7 +78,7 @@ export function fetchSlots(
 
 export function createAppointment(input: {
   barberId: string;
-  serviceId: string;
+  serviceIds: string[];
   startsAt: string;
   customerName: string;
   customerPhone: string;

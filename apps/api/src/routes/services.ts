@@ -16,7 +16,7 @@ servicesRouter.get(
   asyncHandler(async (req, res) => {
     const services = await prisma.service.findMany({
       where: { shopId: req.auth!.shopId, isActive: true },
-      select: { id: true, name: true, durationMin: true, price: true },
+      select: { id: true, name: true, durationMin: true, price: true, requiresOwnSlot: true },
       orderBy: { sortOrder: 'asc' },
     });
 
@@ -48,11 +48,12 @@ servicesRouter.put(
       data: {
         name: input.name,
         durationMin: input.durationMin,
+        requiresOwnSlot: input.requiresOwnSlot,
         price: input.price ?? null,
         isActive: input.isActive,
         ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
       },
-      select: { id: true, name: true, durationMin: true, price: true, isActive: true },
+      select: { id: true, name: true, durationMin: true, price: true, requiresOwnSlot: true, isActive: true },
     });
 
     res.json({ service });
@@ -96,11 +97,12 @@ servicesRouter.post(
         shopId,
         name: input.name,
         durationMin: input.durationMin,
+        requiresOwnSlot: input.requiresOwnSlot,
         price: input.price ?? null,
         isActive: input.isActive,
         sortOrder: input.sortOrder ?? (sonSira._max.sortOrder ?? 0) + 1,
       },
-      select: { id: true, name: true, durationMin: true, price: true, isActive: true },
+      select: { id: true, name: true, durationMin: true, price: true, requiresOwnSlot: true, isActive: true },
     });
 
     res.status(201).json({ service });
@@ -148,7 +150,16 @@ servicesRouter.delete(
       );
     }
 
-    const randevuSayisi = await prisma.appointment.count({ where: { serviceId: service.id } });
+    // ⚠️ `appointments.service_id` üzerinden saymak YETMEZ.
+    //
+    // Bir hizmet, randevunun ANA hizmeti olmadan da kullanılmış olabilir:
+    // "Saç + Ağda" randevusunda ana hizmet Saç, ama Ağda da o randevunun
+    // parçası. Yalnızca ana hizmete bakılsaydı Ağda "hiç kullanılmamış"
+    // sayılır, gerçekten silinmeye çalışılır ve veritabanı kısıtı 500 ile
+    // patlardı. Hizmet–randevu ilişkisinin tamamı burada.
+    const randevuSayisi = await prisma.appointmentService.count({
+      where: { serviceId: service.id },
+    });
 
     if (randevuSayisi === 0) {
       try {

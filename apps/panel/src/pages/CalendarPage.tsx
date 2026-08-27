@@ -21,9 +21,20 @@ export default function CalendarPage() {
   const isAdmin = barber?.role === 'admin';
 
   const [date, setDate] = useState(todayLocalDate());
-  const [selectedBarberId, setSelectedBarberId] = useState<string | null>(
-    isAdmin ? null : (barber?.id ?? null),
-  );
+
+  /**
+   * Panel açıldığında KİMİN takvimi görünür?
+   *
+   * ⚠️ Admin için de KENDİ takvimi. Eskiden burası boş başlıyor ve aşağıdaki
+   * etki listenin ilk berberini seçiyordu; liste ada göre sıralı olduğu için
+   * (`GET /barbers` → orderBy name) Müslüm giriş yaptığında karşısına Fırat'ın
+   * günü çıkıyordu. Kendi randevularını görmek için her açılışta bir dokunuş
+   * fazla gerekiyordu.
+   *
+   * Berber sekmeleri aynen duruyor: Müslüm, Fırat'ın gününü görmek için
+   * adına dokunuyor.
+   */
+  const [selectedBarberId, setSelectedBarberId] = useState<string | null>(barber?.id ?? null);
   const [walkInSlot, setWalkInSlot] = useState<{ startsAt: string } | null>(null);
   const [detailAppointment, setDetailAppointment] = useState<Appointment | null>(null);
 
@@ -37,7 +48,10 @@ export default function CalendarPage() {
   const barbers = barbersQuery.data?.barbers ?? [];
   const services = servicesQuery.data?.services ?? [];
 
-  // staff her zaman kendi kimliğine kilitli; admin için ilk berber varsayılan
+  // staff her zaman kendi kimliğine kilitli.
+  //
+  // Admin için buradaki tek iş, kendi kimliği bilinmiyorsa (beklenmeyen bir
+  // durum) ekranın boş kalmaması: o zaman listenin ilk berberine düşülür.
   useEffect(() => {
     if (!isAdmin) {
       if (barber?.id) setSelectedBarberId(barber.id);
@@ -51,9 +65,22 @@ export default function CalendarPage() {
   const activeBarberId = isAdmin ? selectedBarberId : (barber?.id ?? null);
   const activeBarberName = barbers.find((b) => b.id === activeBarberId)?.name ?? barber?.name ?? '';
 
-  // Süre şu an tüm hizmetlerde aynı olduğu için günün ızgarasını hesaplamak
-  // amacıyla herhangi bir aktif hizmet "referans" olarak kullanılabilir.
-  const referenceServiceId = services[0]?.id ?? null;
+  /**
+   * Günün saat ızgarası hangi hizmete göre çizilecek?
+   *
+   * ⚠️ Eskiden listenin ilk hizmetiydi ve "zaten hepsi 45 dakika" varsayımına
+   * dayanıyordu. Çoklu hizmet geldiğinden beri bu varsayım kırılgan: uzun
+   * süreli bir hizmet listenin başına geçerse ızgara seyrekleşir ve berber
+   * aslında boş olan saatleri göremez.
+   *
+   * Bu yüzden EN KISA süreli hizmet referans alınıyor — ızgara mümkün olan
+   * tüm başlangıçları gösterir, hangi randevunun kaç slot kapladığını zaten
+   * randevunun kendi `endsAt` değeri belirliyor.
+   */
+  const referenceServiceId =
+    services.length > 0
+      ? services.reduce((enKisa, s) => (s.durationMin < enKisa.durationMin ? s : enKisa)).id
+      : null;
 
   const appointmentsQuery = useQuery({
     queryKey: ['appointments', activeBarberId, date],
@@ -63,7 +90,8 @@ export default function CalendarPage() {
 
   const slotsQuery = useQuery({
     queryKey: ['slots', activeBarberId, referenceServiceId, date],
-    queryFn: () => fetchSlots({ barberId: activeBarberId!, serviceId: referenceServiceId!, date }),
+    queryFn: () =>
+      fetchSlots({ barberId: activeBarberId!, serviceIds: [referenceServiceId!], date }),
     enabled: Boolean(activeBarberId && referenceServiceId),
   });
 

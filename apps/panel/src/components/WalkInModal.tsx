@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type FocusEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
-import { isValidPhone } from '@berber/shared';
+import { X, Check } from 'lucide-react';
+import { isValidPhone, computeAppointmentDuration, MAX_SERVICES_PER_APPOINTMENT } from '@berber/shared';
 import type { Service } from '../lib/types';
 import { createAppointment } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
@@ -27,9 +27,43 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [error, setError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  /**
+   * Seçili hizmetler. Müşteri kapıdan "saç ve ağda" diye gelebiliyor;
+   * berberin bunu tek randevuda kaydedebilmesi gerekiyor.
+   *
+   * ⚠️ Süre TOPLANMIYOR: saç ile ağda aynı oturumda yapılıyor. Yalnızca
+   * "ayrı zaman ister" işaretli hizmetler (Lazer) randevuyu uzatıyor —
+   * hesap sunucuyla ORTAK fonksiyondan geliyor, iki taraf ayrışamıyor.
+   */
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    services[0] ? [services[0].id] : [],
+  );
+
+  const selectedServices = services.filter((s) => selectedIds.includes(s.id));
+
+  const totalDuration =
+    selectedServices.length > 0
+      ? computeAppointmentDuration(
+          selectedServices.map((s) => ({
+            durationMin: s.durationMin,
+            requiresOwnSlot: s.requiresOwnSlot ?? false,
+          })),
+        )
+      : 0;
+
+  function toggleService(id: string) {
+    setError(null);
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((x) => x !== id)
+        : current.length >= MAX_SERVICES_PER_APPOINTMENT
+          ? current
+          : [...current, id],
+    );
+  }
 
   function handlePhoneBlur(e: FocusEvent<HTMLInputElement>) {
     const value = e.target.value.trim();
@@ -40,7 +74,7 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
     mutationFn: () =>
       createAppointment({
         barberId,
-        serviceId,
+        serviceIds: selectedIds,
         startsAt,
         customerName: name.trim(),
         ...(phone.trim() ? { customerPhone: phone.trim() } : {}),
@@ -63,8 +97,8 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
       setError('Müşteri adı gerekli');
       return;
     }
-    if (!serviceId) {
-      setError('Hizmet seçin');
+    if (selectedIds.length === 0) {
+      setError('En az bir hizmet seçin');
       return;
     }
     if (phone.trim() && !isValidPhone(phone.trim())) {
@@ -111,17 +145,36 @@ export function WalkInModal({ barberId, barberName, startsAt, date, services, on
             {phoneError && <span style={{ color: 'var(--danger)', fontSize: 13 }}>{phoneError}</span>}
           </label>
 
-          <label className="field">
-            <span>Hizmet *</span>
-            <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} required>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {formatPrice(s.price) ? ` — ${formatPrice(s.price)}` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="field">
+            <span>Hizmetler * <span className="field-note">(birden fazla seçebilirsiniz)</span></span>
+
+            <div className="service-picker">
+              {services.map((s) => {
+                const secili = selectedIds.includes(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`service-chip${secili ? ' selected' : ''}`}
+                    aria-pressed={secili}
+                    onClick={() => toggleService(s.id)}
+                  >
+                    <span className="service-chip-check">{secili && <Check size={13} aria-hidden />}</span>
+                    <span className="service-chip-name">{s.name}</span>
+                    {formatPrice(s.price) && (
+                      <span className="service-chip-price">{formatPrice(s.price)}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedServices.length > 0 && (
+              <span className="field-hint">
+                {selectedServices.map((s) => s.name).join(' + ')} · {totalDuration} dk
+              </span>
+            )}
+          </div>
 
           {error && (
             <div className="form-error" role="alert">

@@ -23,7 +23,12 @@ export function AppointmentCard({ appointment, onClick }: Props) {
           {name}{noShowBadge && <AlertTriangle size={13} aria-hidden className="appt-warn" />}
         </div>
         <div className="appt-meta">
-          {appointment.service.name}
+          {/* Randevuda birden fazla hizmet olabilir ("Saç + Ağda"). Yalnızca
+              ana hizmet yazılsaydı berber, müşterinin ağda da istediğini
+              kartta göremez, randevuyu açmak zorunda kalırdı. */}
+          {appointment.services?.length
+            ? appointment.services.map((s) => s.name).join(' + ')
+            : appointment.service.name}
           {/* WhatsApp'tan gelen numara veritabanında E.164 (+905321234567)
               tutuluyor — berbere okunabilir yerel biçimde gösteriliyor. */}
           {appointment.customer.phone

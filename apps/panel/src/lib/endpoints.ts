@@ -46,7 +46,13 @@ export function fetchServices() {
 
 export function updateService(
   id: string,
-  input: { name: string; durationMin: number; price: number | null; isActive?: boolean },
+  input: {
+    name: string;
+    durationMin: number;
+    price: number | null;
+    requiresOwnSlot?: boolean;
+    isActive?: boolean;
+  },
 ) {
   return apiRequest<{ service: Service }>(`/services/${id}`, { method: 'PUT', body: input });
 }
@@ -66,13 +72,26 @@ export function fetchAppointments(params: {
   });
 }
 
-export function fetchSlots(params: { barberId: string; serviceId: string; date: string }) {
-  return apiRequest<{ slots: Slot[] }>('/appointments/slots', { query: params });
+/**
+ * Boş saatler.
+ *
+ * Saatler seçilen hizmetlere bağlı: "Saç + Lazer" 90 dakika sürdüğü için
+ * 45 dakikalık bir boşluk o randevuya uygun değil. Bu yüzden hizmetlerin
+ * tamamı sorguya gidiyor (virgülle ayrılmış).
+ */
+export function fetchSlots(params: { barberId: string; serviceIds: string[]; date: string }) {
+  return apiRequest<{ slots: Slot[] }>('/appointments/slots', {
+    query: {
+      barberId: params.barberId,
+      serviceIds: params.serviceIds.join(','),
+      date: params.date,
+    },
+  });
 }
 
 export function createAppointment(input: {
   barberId: string;
-  serviceId: string;
+  serviceIds: string[];
   startsAt: string;
   customerName: string;
   customerPhone?: string;
@@ -211,6 +230,7 @@ export function createService(input: {
   name: string;
   durationMin: number;
   price: number | null;
+  requiresOwnSlot?: boolean;
 }) {
   return apiRequest<{ service: Service }>('/services', { method: 'POST', body: input });
 }

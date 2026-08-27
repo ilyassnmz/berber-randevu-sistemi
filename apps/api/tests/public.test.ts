@@ -709,3 +709,107 @@ async function girisJetonu(email: string): Promise<string> {
     .send({ email, password: fx.password });
   return res.body.accessToken as string;
 }
+
+/**
+ * Müşteri sitesinden çoklu hizmet seçimi.
+ *
+ * Panel testlerindekiyle aynı kural, ama giriş yapmamış müşteri yolundan —
+ * ve burada ek olarak, yanıtın müşteriye ne gösterdiği de önemli: müşteri
+ * seçtiği ikinci hizmetin randevusuna işlendiğini onay ekranında görmeli.
+ */
+describe('Çoklu hizmet — site', () => {
+  /**
+   * Ek hizmetler bu bloğa ait; ortak fixture tek hizmetli kalıyor.
+   * (Fixture'a eklendiğinde, dükkandaki hizmet sayısına dayanan başka
+   * testler sessizce anlamsızlaşıyor.)
+   */
+  let ekHizmetId: string;
+  let ayriZamanHizmetId: string;
+
+  beforeAll(async () => {
+    const [ek, ayri] = await Promise.all([
+      testPrisma.service.create({
+        data: { shopId: fx.shopId, name: 'Site Ek Hizmet', durationMin: 45, sortOrder: 20 },
+      }),
+      testPrisma.service.create({
+        data: {
+          shopId: fx.shopId,
+          name: 'Site Ayrı Zaman',
+          durationMin: 45,
+          sortOrder: 21,
+          requiresOwnSlot: true,
+        },
+      }),
+    ]);
+    ekHizmetId = ek.id;
+    ayriZamanHizmetId = ayri.id;
+  });
+  it('birden fazla hizmetle randevu alınabilir ve hepsi yanıtta döner', async () => {
+    const res = await request(app)
+      .post(`${BASE}/appointments`)
+      .send(bookingBody({ serviceIds: [fx.serviceId, ekHizmetId], serviceId: undefined }));
+
+    expect(res.status).toBe(201);
+
+    const adlar = res.body.appointment.services.map((s: { name: string }) => s.name);
+    expect(adlar).toEqual(['Test Hizmet', 'Site Ek Hizmet']);
+    expect(res.body.appointment.serviceName).toBe('Test Hizmet + Site Ek Hizmet');
+  });
+
+  it('"ayrı zaman isteyen" hizmet eklendiğinde saat listesi buna göre daralır', async () => {
+    const tek = await request(app).get(`${BASE}/slots`).query({
+      barberId: fx.adminId,
+      serviceIds: fx.serviceId,
+      date: nearDate,
+    });
+
+    const cift = await request(app)
+      .get(`${BASE}/slots`)
+      .query({
+        barberId: fx.adminId,
+        serviceIds: `${fx.serviceId},${ayriZamanHizmetId}`,
+        date: nearDate,
+      });
+
+    expect(cift.body.slots.length).toBeLessThan(tek.body.slots.length);
+  });
+
+  it('anahtarla görüntülemede de hizmetlerin tamamı görünür', async () => {
+    const olustur = await request(app)
+      .post(`${BASE}/appointments`)
+      .send(
+        bookingBody({
+          serviceIds: [fx.serviceId, ekHizmetId],
+          serviceId: undefined,
+          customerPhone: '+905329998877',
+        }),
+      )
+      .expect(201);
+
+    const res = await request(app).get(`${BASE}/appointments/${olustur.body.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.appointment.services).toHaveLength(2);
+  });
+
+  it('başka dükkana ait bir hizmet kimliği randevuya sızamaz', async () => {
+    // Herkese açık uç: istemcinin gönderdiği her kimlik şüphelidir.
+    const yabanciDukkan = await createFixture();
+
+    try {
+      const res = await request(app)
+        .post(`${BASE}/appointments`)
+        .send(
+          bookingBody({
+            serviceIds: [fx.serviceId, yabanciDukkan.serviceId],
+            serviceId: undefined,
+            customerPhone: '+905327776655',
+          }),
+        );
+
+      expect(res.status).toBe(404);
+    } finally {
+      await destroyFixture(yabanciDukkan.shopId);
+    }
+  });
+});

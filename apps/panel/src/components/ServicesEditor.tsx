@@ -12,16 +12,24 @@ import type { Service } from '../lib/types';
  * slot motoru süreyi zaten okuyordu — ama ikisini de değiştirecek bir arayüz
  * yoktu, fiyatlar da boştu. "Boyama 90 dakika" demek artık tek bir düzenleme.
  */
+interface ServiceDraft {
+  durationMin: string;
+  price: string;
+  /** "Ayrı zaman ister" — bkz. @berber/shared → duration.ts. */
+  requiresOwnSlot: boolean;
+}
+
 export function ServicesEditor() {
   const queryClient = useQueryClient();
   const [savedId, setSavedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, { durationMin: string; price: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, ServiceDraft>>({});
 
   // Yeni hizmet formu
   const [yeniAd, setYeniAd] = useState('');
   const [yeniSure, setYeniSure] = useState('45');
   const [yeniFiyat, setYeniFiyat] = useState('');
+  const [yeniAyriZaman, setYeniAyriZaman] = useState(false);
   const [eklendi, setEklendi] = useState(false);
 
   // Silme onayı bekleyen hizmet. Tek tıkla silinmemeli — geri alınamaz.
@@ -31,19 +39,22 @@ export function ServicesEditor() {
   const query = useQuery({ queryKey: ['services'], queryFn: fetchServices });
   const services = query.data?.services ?? [];
 
-  function draftFor(s: Service) {
+  function draftFor(s: Service): ServiceDraft {
     return (
       drafts[s.id] ?? {
         durationMin: String(s.durationMin),
         price: s.price ?? '',
+        requiresOwnSlot: s.requiresOwnSlot ?? false,
       }
     );
   }
 
-  function setDraft(id: string, patch: Partial<{ durationMin: string; price: string }>) {
+  function setDraft(id: string, patch: Partial<ServiceDraft>) {
+    const service = services.find((s) => s.id === id);
     const current = drafts[id] ?? {
-      durationMin: String(services.find((s) => s.id === id)?.durationMin ?? 45),
-      price: services.find((s) => s.id === id)?.price ?? '',
+      durationMin: String(service?.durationMin ?? 45),
+      price: service?.price ?? '',
+      requiresOwnSlot: service?.requiresOwnSlot ?? false,
     };
     setDrafts({ ...drafts, [id]: { ...current, ...patch } });
   }
@@ -58,6 +69,7 @@ export function ServicesEditor() {
         name: service.name,
         durationMin: duration,
         price,
+        requiresOwnSlot: draft.requiresOwnSlot,
       });
     },
     onSuccess: (_data, service) => {
@@ -77,11 +89,13 @@ export function ServicesEditor() {
         durationMin: Number(yeniSure),
         // Boş fiyat = "belirtilmemiş" (null), 0 ile karıştırılmamalı.
         price: yeniFiyat.trim() === '' ? null : Number(yeniFiyat),
+        requiresOwnSlot: yeniAyriZaman,
       }),
     onSuccess: () => {
       setYeniAd('');
       setYeniSure('45');
       setYeniFiyat('');
+      setYeniAyriZaman(false);
       setEklendi(true);
       setTimeout(() => setEklendi(false), 2500);
       void queryClient.invalidateQueries({ queryKey: ['services'] });
@@ -188,6 +202,27 @@ export function ServicesEditor() {
               <Trash2 size={16} aria-hidden />
             </button>
 
+            {/*
+              "Ayrı zaman ister" — çoklu hizmet seçiminin süreyi nasıl
+              etkilediğini belirleyen tek ayar.
+
+              Müşteri birden fazla hizmet seçtiğinde süreler TOPLANMIYOR:
+              saç ile ağda aynı 45 dakikada yapılıyor. Bu kutu işaretli
+              hizmetler istisna — yanlarında başka hizmet varken randevuya
+              kendi sürelerini ekliyorlar (Lazer).
+            */}
+            <label className="service-row-flag">
+              <input
+                type="checkbox"
+                checked={draft.requiresOwnSlot}
+                onChange={(e) => setDraft(s.id, { requiresOwnSlot: e.target.checked })}
+              />
+              <span>
+                Ayrı zaman ister
+                <small>Başka bir hizmetle birlikte seçilirse randevu uzar</small>
+              </span>
+            </label>
+
             {silinecek === s.id && (
               <div className="service-confirm">
                 <span>
@@ -267,6 +302,18 @@ export function ServicesEditor() {
             />
           </label>
         </div>
+
+        <label className="service-row-flag">
+          <input
+            type="checkbox"
+            checked={yeniAyriZaman}
+            onChange={(e) => setYeniAyriZaman(e.target.checked)}
+          />
+          <span>
+            Ayrı zaman ister
+            <small>Başka bir hizmetle birlikte seçilirse randevu uzar</small>
+          </span>
+        </label>
 
         <button
           type="submit"

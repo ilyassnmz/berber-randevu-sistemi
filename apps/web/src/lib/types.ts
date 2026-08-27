@@ -13,6 +13,15 @@ export interface Service {
   durationMin: number;
   /** Kuruş değil, TL. Girilmemişse null — arayüz fiyatı gizler. */
   price: number | null;
+  /**
+   * Bu hizmet, yanında başka bir hizmet varken aynı oturuma sığmaz.
+   *
+   * Site, müşteri seçim yaptıkça toplam süreyi anında gösterebilsin diye
+   * bu bilgiye ihtiyaç duyuyor. Hesap sunucuyla ORTAK fonksiyondan geliyor
+   * (@berber/shared → computeAppointmentDuration); ekranda yazan süre ile
+   * sunucunun ayırdığı süre ayrışamıyor.
+   */
+  requiresOwnSlot: boolean;
 }
 
 export interface Barber {
@@ -57,12 +66,22 @@ export interface Slot {
   label: string;
 }
 
+/** Randevuda yapılacak hizmetlerden biri. */
+export interface AppointmentService {
+  name: string;
+  price: number | null;
+}
+
 export interface CreatedAppointment {
   token: string;
   appointment: {
     startsAt: string;
+    endsAt?: string;
     status: string;
     barberName: string;
+    /** Seçilen hizmetlerin tamamı ("Saç + Ağda"). */
+    services?: AppointmentService[];
+    /** Hizmetlerin tek satırlık gösterimi — `services` yoksa geri düşülür. */
     serviceName: string;
     servicePrice: number | null;
     customerName: string | null;
@@ -76,6 +95,7 @@ export interface AppointmentDetail {
   status: string;
   cancelReason: string | null;
   barberName: string;
+  services?: AppointmentService[];
   serviceName: string;
   servicePrice: number | null;
   customerName: string | null;

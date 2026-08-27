@@ -77,13 +77,26 @@ export async function getCustomer(shopId: string, customerId: string) {
         include: {
           service: { select: { id: true, name: true } },
           barber: { select: { id: true, name: true } },
+          // Geçmişte "saç + ağda" gelen müşteri, listede öyle görünmeli.
+          services: {
+            include: { service: { select: { id: true, name: true } } },
+            orderBy: { service: { sortOrder: 'asc' } },
+          },
         },
       },
     },
   });
 
   if (!customer) throw new NotFoundError('Müşteri bulunamadı');
-  return customer;
+
+  // Ara tablo istemciye sızmasın — `services` doğrudan hizmet listesi olsun.
+  return {
+    ...customer,
+    appointments: customer.appointments.map(({ services, ...a }) => ({
+      ...a,
+      services: services.map((s) => s.service),
+    })),
+  };
 }
 
 export async function unblacklistCustomer(shopId: string, customerId: string, actorId: string) {

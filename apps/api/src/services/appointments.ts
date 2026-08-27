@@ -3,7 +3,11 @@ import {
   BLOCKING_STATUSES,
   type AppointmentStatus,
   normalizePhone,
+  computeAppointmentDuration,
+  pickPrimaryService,
+  formatServiceNames,
 } from '@berber/shared';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/client.js';
 import { computeAvailableSlots, isSlotBookable, type Slot } from './slots.js';
 import {
@@ -75,6 +79,40 @@ interface SlotContext {
 }
 
 /**
+ * Randevunun hizmetlerini yükler ve doğrular.
+ *
+ * ⚠️ Sonuç MENÜ SIRASINDA dönüyor (`sortOrder`). İstemcinin gönderdiği sıraya
+ * güvenilmiyor: hizmetlerin gösterim sırası berberin menüsüne ait bir karar,
+ * müşterinin dokunma sırasına değil. Ana hizmet seçimi de (`pickPrimaryService`)
+ * bu sıraya dayandığı için aynı kümenin her zaman aynı sonucu vermesi gerekiyor.
+ *
+ * Eksik ya da başka dükkana ait bir kimlik sessizce ATLANMAZ — hata verir.
+ * Atlansaydı müşteri iki hizmet seçip tek hizmetlik randevu almış olurdu ve
+ * bunu ancak dükkanda fark ederdi.
+ */
+async function loadServices(shopId: string, serviceIds: readonly string[]) {
+  if (serviceIds.length === 0) {
+    throw new ValidationError('En az bir hizmet seçilmeli');
+  }
+
+  const services = await prisma.service.findMany({
+    where: { id: { in: [...serviceIds] }, shopId },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  if (services.length !== new Set(serviceIds).size) {
+    throw new NotFoundError('Hizmet bulunamadı');
+  }
+
+  const pasif = services.find((s) => !s.isActive);
+  if (pasif) {
+    throw new ValidationError(`"${pasif.name}" artık verilmiyor`);
+  }
+
+  return services;
+}
+
+/**
  * Bir berberin belirli bir gündeki müsaitliğini hesaplamak için gereken
  * her şeyi tek seferde toplar.
  *
@@ -87,7 +125,7 @@ interface SlotContext {
 async function loadSlotContext(
   shopId: string,
   barberId: string,
-  serviceId: string,
+  serviceIds: readonly string[],
   date: string,
   opts: { excludeAppointmentId?: string; actor?: BookingActor } = {},
 ): Promise<SlotContext> {
@@ -95,11 +133,7 @@ async function loadSlotContext(
   const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new NotFoundError('Dükkan bulunamadı');
 
-  const service = await prisma.service.findFirst({
-    where: { id: serviceId, shopId },
-  });
-  if (!service) throw new NotFoundError('Hizmet bulunamadı');
-  if (!service.isActive) throw new ValidationError('Bu hizmet artık verilmiyor');
+  const services = await loadServices(shopId, serviceIds);
 
   const barber = await prisma.barber.findFirst({
     where: { id: barberId, shopId },
@@ -142,7 +176,10 @@ async function loadSlotContext(
     timezone: shop.timezone,
     slotStepMin: shop.slotStepMin,
     maxAdvanceDays: actor === 'barber' ? NO_ADVANCE_LIMIT_DAYS : shop.maxAdvanceDays,
-    serviceDurationMin: service.durationMin,
+    // Süre TEK hizmetten değil, seçilen hizmetlerin tamamından geliyor:
+    // saç + ağda aynı 45 dakikada yapılırken, lazer eklendiğinde randevu
+    // bir oturum daha uzuyor (bkz. @berber/shared → duration.ts).
+    serviceDurationMin: computeAppointmentDuration(services),
     workingHours: workingHours
       ? {
           startTime: workingHours.startTime,
@@ -180,11 +217,11 @@ export type EmptySlotsReason = 'closed' | 'timeoff' | 'full';
 export async function getAvailableSlotsWithReason(
   shopId: string,
   barberId: string,
-  serviceId: string,
+  serviceIds: readonly string[],
   date: string,
   now = new Date(),
 ): Promise<{ slots: Slot[]; reason: EmptySlotsReason | null }> {
-  const ctx = await loadSlotContext(shopId, barberId, serviceId, date, { actor: 'customer' });
+  const ctx = await loadSlotContext(shopId, barberId, serviceIds, date, { actor: 'customer' });
   const slots = computeAvailableSlots({ ...ctx, date, now });
 
   if (slots.length > 0) return { slots, reason: null };
@@ -201,7 +238,7 @@ export async function getAvailableSlotsWithReason(
 export async function getAvailableSlots(
   shopId: string,
   barberId: string,
-  serviceId: string,
+  serviceIds: readonly string[],
   date: string,
   now = new Date(),
   auth?: AuthContext,
@@ -218,8 +255,42 @@ export async function getAvailableSlots(
   // chatbot) auth göndermez; onlar için sınır geçerli.
   const actor: BookingActor = auth ? 'barber' : 'customer';
 
-  const ctx = await loadSlotContext(shopId, barberId, serviceId, date, { actor });
+  const ctx = await loadSlotContext(shopId, barberId, serviceIds, date, { actor });
   return computeAvailableSlots({ ...ctx, date, now, includePast });
+}
+
+// ─────────────────────────────────────────────────────────
+// Randevu okuma biçimi
+// ─────────────────────────────────────────────────────────
+
+/**
+ * Randevu okunurken her zaman birlikte gelen ilişkiler.
+ *
+ * Tek bir yerde tanımlı olmasının sebebi: randevu döndüren yedi ayrı fonksiyon
+ * var (oluştur, iptal et, tamamla, gelmedi, ertele, listele, tek getir) ve
+ * birinde `services` eklemeyi unutmak, panelde o randevunun ikinci hizmetinin
+ * sessizce görünmemesi demek olurdu.
+ */
+const APPOINTMENT_INCLUDE = {
+  customer: true,
+  service: true,
+  barber: true,
+  services: { include: { service: true }, orderBy: { service: { sortOrder: 'asc' } } },
+} satisfies Prisma.AppointmentInclude;
+
+type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
+  include: typeof APPOINTMENT_INCLUDE;
+}>;
+
+/**
+ * Ara tabloyu istemciden gizler: `services` doğrudan hizmet listesi olur.
+ *
+ * `appointment_services` satırlarının kendisi (randevu kimliği + hizmet
+ * kimliği) arayüz için gürültü; ihtiyaç duyulan şey hizmetlerin kendisi.
+ */
+function toAppointmentDto<T extends AppointmentWithRelations>(appointment: T) {
+  const { services, ...rest } = appointment;
+  return { ...rest, services: services.map((s) => s.service) };
 }
 
 // ─────────────────────────────────────────────────────────
@@ -229,7 +300,11 @@ export async function getAvailableSlots(
 export interface CreateAppointmentParams {
   shopId: string;
   barberId: string;
-  serviceId: string;
+  /**
+   * Randevuda yapılacak hizmetlerin tamamı. Tek hizmetli randevu da tek
+   * elemanlı bir liste — ayrı bir yol yok, böylece iki durum ayrışamıyor.
+   */
+  serviceIds: readonly string[];
   startsAt: Date;
   customerName: string;
   customerPhone?: string | undefined;
@@ -264,7 +339,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
   const {
     shopId,
     barberId,
-    serviceId,
+    serviceIds,
     startsAt,
     customerName,
     customerPhone,
@@ -282,8 +357,8 @@ export async function createAppointment(params: CreateAppointmentParams) {
   const shop = await prisma.shop.findUnique({ where: { id: shopId } });
   if (!shop) throw new NotFoundError('Dükkan bulunamadı');
 
-  const service = await prisma.service.findFirst({ where: { id: serviceId, shopId } });
-  if (!service) throw new NotFoundError('Hizmet bulunamadı');
+  const services = await loadServices(shopId, serviceIds);
+  const primaryService = pickPrimaryService(services);
 
   const localDate = formatLocalDateFromInstant(startsAt, shop.timezone);
 
@@ -292,7 +367,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
   // giren berber istediği tarihe girebilir (bkz. BookingActor).
   const actor: BookingActor = source === 'panel' ? 'barber' : 'customer';
 
-  const ctx = await loadSlotContext(shopId, barberId, serviceId, localDate, { actor });
+  const ctx = await loadSlotContext(shopId, barberId, serviceIds, localDate, { actor });
   const bookable = isSlotBookable(startsAt, { ...ctx, date: localDate, now: new Date() });
 
   if (!bookable) {
@@ -342,7 +417,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
     }
   }
 
-  const endsAt = addMinutes(startsAt, service.durationMin);
+  const endsAt = addMinutes(startsAt, computeAppointmentDuration(services));
 
   // ── Kayıt ────────────────────────────────────────────
   try {
@@ -351,7 +426,14 @@ export async function createAppointment(params: CreateAppointmentParams) {
         shopId,
         barberId,
         customerId: customer.id,
-        serviceId,
+        // Ana hizmet, kümenin menü sırasına göre ilk üyesi. Randevunun
+        // süresini BELİRLEMEZ (o `endsAt` içinde, kümenin tamamından
+        // hesaplandı); tek satırlık özetlerde yazılan hizmet budur.
+        serviceId: primaryService.id,
+        // Hizmetlerin tamamı — ana hizmet dahil. Randevu ve hizmet satırları
+        // aynı işlemde yazılıyor: randevunun hizmetsiz kalabileceği bir an
+        // olmamalı.
+        services: { create: services.map((s) => ({ serviceId: s.id })) },
         startsAt,
         endsAt,
         status,
@@ -363,7 +445,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
             ? new Date(Date.now() + shop.confirmTimeoutMin * 60_000)
             : null,
       },
-      include: { customer: true, service: true, barber: true },
+      include: APPOINTMENT_INCLUDE,
     });
 
     await recordAudit({
@@ -376,19 +458,23 @@ export async function createAppointment(params: CreateAppointmentParams) {
     });
 
     if (notifyCustomer && appointment.customer.phone) {
+      // Müşteriye TÜM hizmetler yazılıyor ("Saç + Ağda"): yalnızca ana hizmeti
+      // yazmak, ikinci hizmetin kaydedilmediği izlenimi verirdi.
+      const hizmetler = formatServiceNames(services);
+
       await sendToCustomer(appointment.customerId, {
         text:
           '✅ Randevunuz oluşturuldu!\n\n' +
           `📅 ${formatDateTr(localDate, shop.timezone)}\n` +
           `🕘 ${formatLocalTime(startsAt, shop.timezone)}\n` +
           `💈 ${appointment.barber.name}\n` +
-          `✂️ ${appointment.service.name}`,
+          `✂️ ${hizmetler}`,
         template: 'APPOINTMENT_CONFIRMED',
         templateParams: [
           formatDateTr(localDate, shop.timezone),
           formatLocalTime(startsAt, shop.timezone),
           appointment.barber.name,
-          appointment.service.name,
+          hizmetler,
         ],
       }).catch((error: unknown) => {
         // Bildirim başarısız olsa da randevu geçerli — sessizce loglanır.
@@ -396,7 +482,7 @@ export async function createAppointment(params: CreateAppointmentParams) {
       });
     }
 
-    return appointment;
+    return toAppointmentDto(appointment);
   } catch (error) {
     // Veritabanı kısıtı devreye girdi: araya başka bir istek girmiş.
     if (isOverlapViolation(error)) {
@@ -471,7 +557,7 @@ function formatLocalDateFromInstant(instant: Date, timezone: string): string {
 async function loadAppointment(shopId: string, appointmentId: string) {
   const appointment = await prisma.appointment.findFirst({
     where: { id: appointmentId, shopId },
-    include: { customer: true, service: true, barber: true },
+    include: APPOINTMENT_INCLUDE,
   });
 
   if (!appointment) throw new NotFoundError('Randevu bulunamadı');
@@ -514,7 +600,7 @@ export async function confirmPendingAppointment(shopId: string, appointmentId: s
   const updated = await prisma.appointment.update({
     where: { id: appointmentId },
     data: { status: APPOINTMENT_STATUS.CONFIRMED, confirmDeadline: null },
-    include: { customer: true, service: true, barber: true },
+    include: APPOINTMENT_INCLUDE,
   });
 
   await recordAudit({
@@ -525,7 +611,7 @@ export async function confirmPendingAppointment(shopId: string, appointmentId: s
     entityId: appointmentId,
   });
 
-  return updated;
+  return toAppointmentDto(updated);
 }
 
 export async function cancelAppointment(
@@ -549,7 +635,7 @@ export async function cancelAppointment(
       cancelReason: reason ?? null,
       cancelledAt: new Date(),
     },
-    include: { customer: true, service: true, barber: true },
+    include: APPOINTMENT_INCLUDE,
   });
 
   await recordAudit({
@@ -586,7 +672,7 @@ export async function cancelAppointment(
     }
   }
 
-  return updated;
+  return toAppointmentDto(updated);
 }
 
 /**
@@ -629,7 +715,7 @@ export async function completeAppointment(
   const updated = await prisma.appointment.update({
     where: { id: appointmentId },
     data: { status: APPOINTMENT_STATUS.COMPLETED },
-    include: { customer: true, service: true, barber: true },
+    include: APPOINTMENT_INCLUDE,
   });
 
   await recordAudit({
@@ -640,7 +726,7 @@ export async function completeAppointment(
     entityId: appointmentId,
   });
 
-  return updated;
+  return toAppointmentDto(updated);
 }
 
 /**
@@ -663,7 +749,7 @@ export async function markNoShow(
     prisma.appointment.update({
       where: { id: appointmentId },
       data: { status: APPOINTMENT_STATUS.NO_SHOW },
-      include: { customer: true, service: true, barber: true },
+      include: APPOINTMENT_INCLUDE,
     }),
     prisma.customer.update({
       where: { id: appointment.customerId },
@@ -696,7 +782,7 @@ export async function markNoShow(
     });
   }
 
-  return updated;
+  return toAppointmentDto(updated);
 }
 
 export async function rescheduleAppointment(
@@ -720,26 +806,36 @@ export async function rescheduleAppointment(
   // taşınabilmesi gerekiyor.
   // Erteleme yalnızca panelden yapılıyor (chatbot ve site ertelemiyor), yani
   // işlemi yapan berber — ileri tarih sınırına tabi değil.
-  const ctx = await loadSlotContext(
-    shopId,
-    appointment.barberId,
-    appointment.serviceId,
-    localDate,
-    { excludeAppointmentId: appointmentId, actor: 'barber' },
-  );
+  // Randevunun hizmet KÜMESİ taşınıyor, ana hizmeti değil: "saç + lazer"
+  // randevusu 90 dakikalık; tek hizmete bakılsaydı 45 dakikalık bir yere
+  // taşınabilir ve sonraki randevunun üstüne binerdi.
+  //
+  // Küme boşsa ana hizmete düşülüyor. Normalde imkânsız (randevu ve hizmet
+  // satırları aynı işlemde yazılıyor, eski kayıtlar da göç sırasında
+  // dolduruldu) — ama bir randevunun ERTELENEMEZ hale gelmesi, eksik bir
+  // satırın kabul edilebilir sonucu değil.
+  const serviceIds =
+    appointment.services.length > 0
+      ? appointment.services.map((s) => s.serviceId)
+      : [appointment.serviceId];
+
+  const ctx = await loadSlotContext(shopId, appointment.barberId, serviceIds, localDate, {
+    excludeAppointmentId: appointmentId,
+    actor: 'barber',
+  });
 
   if (!isSlotBookable(newStartsAt, { ...ctx, date: localDate, now: new Date() })) {
     throw new ConflictError('Seçilen saat müsait değil.', 'SLOT_UNAVAILABLE');
   }
 
-  const newEndsAt = addMinutes(newStartsAt, appointment.service.durationMin);
+  const newEndsAt = addMinutes(newStartsAt, ctx.serviceDurationMin);
   const previousStartsAt = appointment.startsAt;
 
   try {
     const updated = await prisma.appointment.update({
       where: { id: appointmentId },
       data: { startsAt: newStartsAt, endsAt: newEndsAt },
-      include: { customer: true, service: true, barber: true },
+      include: APPOINTMENT_INCLUDE,
     });
 
     await recordAudit({
@@ -776,7 +872,7 @@ export async function rescheduleAppointment(
       });
     }
 
-    return updated;
+    return toAppointmentDto(updated);
   } catch (error) {
     if (isOverlapViolation(error)) throw new SlotTakenError();
     throw error;
@@ -827,6 +923,13 @@ export async function listAppointments(params: ListAppointmentsParams) {
       },
       service: { select: { id: true, name: true, durationMin: true } },
       barber: { select: { id: true, name: true } },
+      // Randevunun hizmetlerinin TAMAMI. Panel kartında "Saç + Ağda"
+      // yazabilmek için gerekiyor; yalnızca ana hizmet gösterilseydi berber
+      // müşterinin ağda da istediğini randevu detayını açmadan göremezdi.
+      services: {
+        include: { service: { select: { id: true, name: true, durationMin: true, price: true } } },
+        orderBy: { service: { sortOrder: 'asc' } },
+      },
     },
     orderBy: { startsAt: 'asc' },
     take: params.limit + 1,
@@ -837,8 +940,9 @@ export async function listAppointments(params: ListAppointmentsParams) {
   const items = hasMore ? rows.slice(0, params.limit) : rows;
 
   return {
-    items: items.map((a) => ({
+    items: items.map(({ services, ...a }) => ({
       ...a,
+      services: services.map((s) => s.service),
       localStartTime: formatLocalTime(a.startsAt, shop.timezone),
       localEndTime: formatLocalTime(a.endsAt, shop.timezone),
     })),
@@ -849,7 +953,7 @@ export async function listAppointments(params: ListAppointmentsParams) {
 export async function getAppointment(shopId: string, appointmentId: string, auth?: AuthContext) {
   const appointment = await loadAppointment(shopId, appointmentId);
   if (auth) assertCanAccessBarber(auth, appointment.barberId);
-  return appointment;
+  return toAppointmentDto(appointment);
 }
 
 /**
@@ -874,7 +978,7 @@ export async function findSiblingAppointments(
   // Cihaz özeti yoksa (panelden girilmiş ya da eski kayıt) kardeş de yok.
   if (!appointment.clientHash) return [];
 
-  return prisma.appointment.findMany({
+  const kardesler = await prisma.appointment.findMany({
     where: {
       shopId,
       clientHash: appointment.clientHash,
@@ -883,9 +987,11 @@ export async function findSiblingAppointments(
       // staff yalnızca kendi randevularına dokunabilir; admin hepsine.
       ...(auth && auth.role !== 'admin' ? { barberId: auth.barberId } : {}),
     },
-    include: { customer: true, service: true, barber: true },
+    include: APPOINTMENT_INCLUDE,
     orderBy: { startsAt: 'asc' },
   });
+
+  return kardesler.map(toAppointmentDto);
 }
 
 /**

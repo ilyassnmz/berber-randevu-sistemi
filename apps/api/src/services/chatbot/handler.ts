@@ -566,7 +566,7 @@ async function askTime(args: DispatchArgs): Promise<void> {
     return;
   }
 
-  const slots = await getAvailableSlots(shop.id, context.barberId, service.id, context.date);
+  const slots = await getAvailableSlots(shop.id, context.barberId, [service.id], context.date);
 
   if (slots.length === 0) {
     // Kapalı gün mü, yoksa gün dolu mu? todo.md iki ayrı mesaj istiyor —
@@ -647,7 +647,7 @@ async function handleSelectTime(args: DispatchArgs): Promise<void> {
         const slots = await getAvailableSlots(
           args.shop.id,
           context.barberId,
-          service.id,
+          [service.id],
           context.date,
         );
         const padded = normalized.padStart(5, '0');
@@ -739,7 +739,9 @@ async function showConfirmation(args: DispatchArgs): Promise<void> {
     const appointment = await createAppointment({
       shopId: shop.id,
       barberId: context.barberId,
-      serviceId: context.serviceId,
+      // Chatbot akışı tek hizmet soruyor (çoklu seçim yalnızca internet
+      // sitesinde ve panelde var); tek elemanlı liste olarak geçiyor.
+      serviceIds: [context.serviceId],
       startsAt: new Date(context.startsAt),
       customerName: customer.name,
       customerPhone: customer.phone ?? undefined,

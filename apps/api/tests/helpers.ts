@@ -19,6 +19,14 @@ export interface TestFixture {
   adminId: string;
   staffId: string;
   customerId: string;
+  /**
+   * ⚠️ Fixture BİLEREK tek hizmetli.
+   *
+   * Birden fazla hizmete ihtiyaç duyan testler (çoklu hizmet) kendi
+   * hizmetlerini kendi bloklarında oluşturuyor. Buraya eklendiğinde
+   * "son aktif hizmet silinemez" gibi, dükkanda kaç hizmet olduğuna
+   * dayanan testler sessizce anlamsızlaşıyor — denendi ve öyle oldu.
+   */
   serviceId: string;
   adminEmail: string;
   staffEmail: string;
@@ -63,7 +71,7 @@ export async function createFixture(): Promise<TestFixture> {
       data: { shopId: shop.id, name: 'Test Müşteri', phone: `+9053${suffix}` },
     }),
     testPrisma.service.create({
-      data: { shopId: shop.id, name: 'Test Hizmet', durationMin: 45 },
+      data: { shopId: shop.id, name: 'Test Hizmet', durationMin: 45, sortOrder: 1 },
     }),
   ]);
 

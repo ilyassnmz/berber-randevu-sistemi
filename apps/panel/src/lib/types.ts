@@ -29,6 +29,11 @@ export interface Service {
   name: string;
   durationMin: number;
   price: string | null;
+  /**
+   * Bu hizmet, yanında başka bir hizmet varken aynı oturuma sığmaz —
+   * randevuya kendi süresini ekler (Lazer). Bkz. @berber/shared → duration.ts.
+   */
+  requiresOwnSlot?: boolean;
 }
 
 export interface Customer {
@@ -53,7 +58,19 @@ export interface Appointment {
   source: AppointmentSource;
   createdAt: string;
   customer: Customer;
+  /**
+   * Randevunun ANA hizmeti — tek satırlık gösterimlerin geri düşeceği yer.
+   * Süreyle ilgisi yok; süre `services` kümesinin tamamından hesaplanıyor.
+   */
   service: { id: string; name: string; durationMin: number; price?: string | null };
+  /**
+   * Randevuda yapılacak hizmetlerin tamamı ("Saç + Ağda").
+   *
+   * Opsiyonel çünkü telefonda önbellekte kalmış eski panel sürümüyle yeni
+   * sunucu bir süre yan yana çalışabiliyor; alan yoksa arayüz ana hizmete
+   * düşer, boş ekran göstermez.
+   */
+  services?: Array<{ id: string; name: string; durationMin: number; price?: string | null }>;
   barber: { id: string; name: string };
   localStartTime?: string;
   localEndTime?: string;
@@ -111,6 +128,8 @@ export interface CustomerDetail extends CustomerListItem {
     endsAt: string;
     status: AppointmentStatus;
     service: { id: string; name: string };
+    /** Randevunun hizmetlerinin tamamı; eski yanıtlarda bulunmayabilir. */
+    services?: Array<{ id: string; name: string }>;
     barber: { id: string; name: string };
   }>;
 }

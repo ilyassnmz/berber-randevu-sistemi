@@ -229,13 +229,23 @@ model Service {
   /// Gelir raporu için. Şu an kullanılmıyor, maliyeti sıfır.
   price Decimal? @db.Decimal(10, 2)
 
+  /// Bu hizmet, yanında başka bir hizmet varken aynı oturuma sığmaz —
+  /// randevuya kendi süresini EKLER.
+  ///
+  /// Müşteri bir randevuda birden fazla hizmet seçebiliyor ve süreler
+  /// normalde toplanmıyor: saç ile ağda aynı 45 dakikada yapılıyor. Lazer
+  /// böyle değil, kendi zamanını istiyor. Kural hizmet ADINA değil bu
+  /// işarete bakıyor; bkz. packages/shared/src/duration.ts.
+  requiresOwnSlot Boolean @default(false) @map("requires_own_slot")
+
   sortOrder Int     @default(0) @map("sort_order")
   isActive  Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  appointments Appointment[]
+  appointments        Appointment[]
+  appointmentServices AppointmentService[]
 
   @@unique([shopId, name])
   @@index([shopId, isActive, sortOrder])
@@ -311,8 +321,18 @@ model Appointment {
   customerId String   @map("customer_id") @db.Uuid
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
+  /// Randevunun ANA hizmeti — listelerde ve tek satırlık özetlerde yazılan.
+  ///
+  /// ⚠️ Randevunun SÜRESİNİ belirlemez. Müşteri birden fazla hizmet
+  /// seçebildiğinden süre `appointment_services` kümesinin tamamından
+  /// hesaplanır (bkz. packages/shared/src/duration.ts). Buradaki alan,
+  /// kümenin menü sırasına göre ilk gelen üyesini işaret eder; ayrı bir
+  /// veri kopyası değil, kümeye bir işaretçidir.
   serviceId String  @map("service_id") @db.Uuid
   service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  /// Randevuda yapılacak hizmetlerin TAMAMI (ana hizmet dahil).
+  services AppointmentService[]
 
   /// ⚠️ DATE + TIME değil. Çakışma kısıtı (EXCLUDE USING gist) bunu gerektiriyor
   /// ve saat dilimi hatalarını kökten önlüyor.
@@ -365,6 +385,33 @@ model Appointment {
   /// Aynı cihazdan gelen randevuları hızlı bulmak için (sınır + toplu iptal).
   @@index([shopId, clientHash, startsAt])
   @@map("appointments")
+}
+
+/// Bir randevuda yapılacak hizmetler.
+///
+/// ── Neden ayrı bir tablo? ────────────────────────────────────────
+///
+/// Müşteri "saç + ağda" gibi birden fazla hizmet seçebiliyor. Bunu
+/// `appointments` üzerinde bir dizi kolonuyla ya da virgüllü metinle tutmak,
+/// hizmet silindiğinde/yeniden adlandırıldığında sessizce bozulan bir kayıt
+/// bırakırdı. Yabancı anahtarlı satırlar bu ilişkiyi veritabanının kendisine
+/// koruttuğu için tercih edildi.
+///
+/// ⚠️ Randevunun `service_id` alanı BURADAKİ satırlardan birini işaret eder
+/// (ana hizmet) — ayrı bir veri değil. Süre ise hep bu kümenin tamamından
+/// hesaplanır.
+model AppointmentService {
+  appointmentId String      @map("appointment_id") @db.Uuid
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  /// Hizmet silinemez: geçmiş randevuda ne yapıldığı okunabilir kalmalı.
+  /// (routes/services.ts randevusu olan hizmeti silmek yerine gizliyor.)
+  serviceId String  @map("service_id") @db.Uuid
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@id([appointmentId, serviceId])
+  @@index([serviceId])
+  @@map("appointment_services")
 }
 
 // ─────────────────────────────────────────────────────────

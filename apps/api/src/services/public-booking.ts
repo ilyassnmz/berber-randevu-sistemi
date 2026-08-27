@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { APPOINTMENT_SOURCE } from '@berber/shared';
+import { APPOINTMENT_SOURCE, formatServiceNames } from '@berber/shared';
 import { prisma } from '../db/client.js';
 import { logger } from '../lib/logger.js';
 import { NotFoundError, ConflictError } from '../lib/errors.js';
@@ -170,7 +170,12 @@ export async function getPublicShopInfo() {
   const [services, barbers] = await Promise.all([
     prisma.service.findMany({
       where: { shopId: shop.id, isActive: true },
-      select: { id: true, name: true, durationMin: true, price: true },
+      // `requiresOwnSlot`: site, seçim yapıldıkça toplam süreyi kendi
+      // hesaplayıp gösterebilsin diye ("Saç + Lazer · 1 sa 30 dk").
+      // Sunucu bu hesabı zaten yapıyor; buradaki kopya yalnızca müşteriye
+      // anında geri bildirim vermek için ve aynı paylaşılan fonksiyonu
+      // (@berber/shared → computeAppointmentDuration) kullanıyor.
+      select: { id: true, name: true, durationMin: true, price: true, requiresOwnSlot: true },
       orderBy: { sortOrder: 'asc' },
     }),
     prisma.barber.findMany({
@@ -226,7 +231,8 @@ export async function getPublicShopInfo() {
  */
 export async function createPublicAppointment(input: {
   barberId: string;
-  serviceId: string;
+  /** Müşterinin seçtiği hizmetlerin tamamı ("Saç + Ağda"). */
+  serviceIds: readonly string[];
   startsAt: Date;
   customerName: string;
   customerPhone: string;
@@ -247,7 +253,7 @@ export async function createPublicAppointment(input: {
   const appointment = await createAppointment({
     shopId: shop.id,
     barberId: input.barberId,
-    serviceId: input.serviceId,
+    serviceIds: input.serviceIds,
     startsAt: input.startsAt,
     customerName: input.customerName,
     customerPhone: input.customerPhone,
@@ -275,7 +281,9 @@ export async function createPublicAppointment(input: {
     barberId: appointment.barberId,
     barberName: appointment.barber.name,
     customerName: appointment.customer.name,
-    serviceName: appointment.service.name,
+    // Bildirimde hizmetlerin tamamı yazıyor: berber telefonuna düşen
+    // bildirimden randevunun 45 mi 90 dakika mı olduğunu anlayabilmeli.
+    serviceName: formatServiceNames(appointment.services),
     zaman: `${formatDateTr(yerelGun, shop.timezone)}, ${formatLocalTime(appointment.startsAt, shop.timezone)}`,
   });
 
@@ -291,12 +299,19 @@ export async function createPublicAppointment(input: {
 export async function getAppointmentByToken(token: string) {
   const appointment = await prisma.appointment.findUnique({
     where: { publicToken: token },
-    include: { barber: true, service: true, customer: true },
+    include: {
+      barber: true,
+      service: true,
+      customer: true,
+      services: { include: { service: true }, orderBy: { service: { sortOrder: 'asc' } } },
+    },
   });
 
   if (!appointment) {
     throw new NotFoundError('Randevu bulunamadı');
   }
+
+  const services = appointment.services.map((s) => s.service);
 
   return {
     id: appointment.id,
@@ -305,7 +320,12 @@ export async function getAppointmentByToken(token: string) {
     status: appointment.status,
     cancelReason: appointment.cancelReason,
     barberName: appointment.barber.name,
-    serviceName: appointment.service.name,
+    services: services.map((s) => ({
+      name: s.name,
+      price: s.price === null ? null : Number(s.price),
+    })),
+    // Eski (önbellekteki) site sürümü bu iki alanı okuyor — bkz. routes/public.ts.
+    serviceName: formatServiceNames(services),
     servicePrice: appointment.service.price,
     customerName: appointment.customer.name,
   };

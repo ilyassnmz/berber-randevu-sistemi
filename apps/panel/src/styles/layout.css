@@ -1231,3 +1231,98 @@ svg {
 .appointment-card[data-status='completed'] .appt-time {
   color: var(--status-completed);
 }
+
+/* ── Hizmet seçici (çoklu) ───────────────────────────── */
+/*
+ * Açılır liste (`select`) yerine dokunmalı etiketler.
+ *
+ * Sebep: berber artık BİRDEN FAZLA hizmet seçebiliyor ve çoklu seçimli bir
+ * `select`, mobil tarayıcılarda hem her platformda farklı görünüyor hem de
+ * "birden fazla seçilebilir" olduğunu hiç belli etmiyor. Etiketlerde seçim
+ * tek dokunuş ve seçili olan gözle görülüyor.
+ */
+.service-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.service-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  min-height: var(--tap-min);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.service-chip.selected {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+/* Seçim kutucuğu: seçili değilken de yer kaplar, aksi halde hizmetler
+   seçildikçe sağa sola kayıyor ve liste titriyordu. */
+.service-chip-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--accent);
+  flex: none;
+}
+
+.service-chip.selected .service-chip-check {
+  border-color: var(--accent);
+}
+
+.service-chip-price {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.field-note {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.field-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* "Ayrı zaman ister" işareti — hizmet satırının altında tam genişlikte.
+   Satırın ızgarasına 5. sütun olarak sokulmadı: dar telefonda süre/fiyat
+   alanlarını eziyordu. */
+.service-row-flag {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.service-row-flag input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.service-row-flag small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-faint);
+}

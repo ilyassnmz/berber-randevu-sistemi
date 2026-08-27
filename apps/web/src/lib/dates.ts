@@ -97,9 +97,19 @@ export function formatPrice(price: number | null): string | null {
   return `${new Intl.NumberFormat('tr-TR').format(price)} ₺`;
 }
 
-/** "45 dk" */
+/**
+ * "45 dk", "1 sa", "1 sa 30 dk"
+ *
+ * Bir saati aşan süreler dakika olarak yazıldığında ("90 dk") okunması
+ * zorlaşıyor; çoklu hizmet seçimiyle bu süreler artık olağan.
+ */
 export function formatDuration(minutes: number): string {
-  return `${minutes} dk`;
+  if (minutes < 60) return `${minutes} dk`;
+
+  const saat = Math.floor(minutes / 60);
+  const kalan = minutes % 60;
+
+  return kalan === 0 ? `${saat} sa` : `${saat} sa ${kalan} dk`;
 }
 
 /**
