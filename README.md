@@ -50,7 +50,8 @@ Docker Compose + Caddy
 - Müşteri listesi, randevu geçmişi, kara liste ve dönemsel istatistikler.
 - Yeni randevu geldiğinde telefona web push bildirimi.
 
-**Kötüye kullanıma karşı** — sistem herkese açık ve telefon doğrulaması yok:
+**Kötüye kullanıma karşı** — randevu almak giriş gerektirmiyor, bu yüzden
+koruma katmanları uygulama tarafında:
 
 - Bir numara, güne yalnızca bir randevu alabilir.
 - Aynı cihazdan günde en fazla üç *farklı* numaraya randevu alınabilir. Cihaz,
@@ -248,7 +249,7 @@ apps/api/                 Express + Prisma
       public-booking.ts   Herkese açık randevu akışı
       auth.ts             Giriş, jeton rotasyonu, hesap kilitleme
       whatsapp/           Meta istemcisi + sahte istemci + imza doğrulama
-      chatbot/            Durum makinesi (uykuda)
+      chatbot/            WhatsApp durum makinesi (kimlik bilgisi girilmeden kapalı)
 apps/panel/               Berber paneli (React, PWA)
 apps/web/                 Müşteri randevu sitesi (React)
 packages/shared/          Zod şemaları, telefon normalleştirme, süre hesabı
@@ -288,10 +289,10 @@ npm run test:integration --workspace=@berber/api
 - **Kimlik doğrulama** — jeton rotasyonu, çalınmış jeton tespiti, hesap
   kilitleme, kullanıcı sayımına karşı tek tip hata mesajı.
 
-> ⚠️ Entegrasyon testleri `TEST_DATABASE_URL` tanımlı değilse ya da bu değer
-> üretim veritabanını gösteriyorsa **çalışmayı reddeder.** Bu koruma sonradan
-> eklendi: testler bir dönem üretimle aynı veritabanına yazdı ve yarıda kalan
-> bir koşudan artakalan kayıt canlı siteyi düşürdü.
+> ⚠️ Entegrasyon testleri gerçek bir veritabanına yazıp siliyor. Bu yüzden
+> `TEST_DATABASE_URL` tanımlı değilse ya da üretim veritabanını gösteriyorsa
+> **çalışmayı reddediyorlar.** Yanlış veritabanına yazan bir test takımı, fark
+> edilmesi en zor hasar türlerinden biri.
 
 ---
 
