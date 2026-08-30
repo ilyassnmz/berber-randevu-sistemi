@@ -129,7 +129,7 @@
 	import api_routes
 
 	# WhatsApp webhook'u yalnızca ana alan adında. Cloud API şu an
-	# kullanılmıyor (bkz. DURUM.md) ama uç duruyor — ileride bir numara
+	# kullanılmıyor ama uç duruyor — ileride bir numara
 	# bağlanırsa Meta'ya verilecek adres değişmesin.
 	handle /webhook/* {
 		reverse_proxy api:3000

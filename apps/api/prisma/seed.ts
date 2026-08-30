@@ -24,7 +24,7 @@ function generatePassword(): string {
 }
 
 /**
- * todo.md → Proje Künyesi: hepsi şimdilik 45 dakika.
+ * Dükkanın hizmet listesi. Hepsi şimdilik 45 dakika.
  *
  * `requiresOwnSlot`: müşteri birden fazla hizmet seçtiğinde süreler
  * toplanmıyor — saç ile ağda aynı oturumda yapılıyor. Lazer istisna:
@@ -54,9 +54,15 @@ const WORKING_DAYS = [
   { dayOfWeek: 6, startTime: '09:00', endTime: '20:15', isWorking: true }, // Cumartesi
 ] as const;
 
+/**
+ * Başlangıç berber hesapları.
+ *
+ * Kurulumda buradaki değerler kendi ekibinizle değiştirilir; şifreler
+ * rastgele üretilip yalnızca bir kez ekrana basılır.
+ */
 const BARBERS = [
-  { name: 'Müslüm', email: 'muslum@ozdede.com', role: 'admin' as const },
-  { name: 'Fırat', email: 'firat@ozdede.com', role: 'staff' as const },
+  { name: 'Yönetici', email: 'yonetici@example.com', role: 'admin' as const },
+  { name: 'Çalışan', email: 'calisan@example.com', role: 'staff' as const },
 ];
 
 async function main(): Promise<void> {

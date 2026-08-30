@@ -36,7 +36,7 @@ export interface ListCustomersParams {
   limit: number;
 }
 
-/** todo.md M3: sayfalamalı, aranabilir müşteri listesi. */
+/** Sayfalamalı, aranabilir müşteri listesi. */
 export async function listCustomers(params: ListCustomersParams) {
   const where: Record<string, unknown> = { shopId: params.shopId };
 
@@ -66,7 +66,7 @@ export async function listCustomers(params: ListCustomersParams) {
   };
 }
 
-/** todo.md M3: müşteri detayı, randevu geçmişiyle. */
+/** Müşteri detayı, randevu geçmişiyle. */
 export async function getCustomer(shopId: string, customerId: string) {
   const customer = await prisma.customer.findFirst({
     where: { id: customerId, shopId },

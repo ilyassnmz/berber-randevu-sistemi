@@ -40,7 +40,7 @@ function at(startTime: string, endTime: string, date = DATE) {
 const labels = (input: SlotEngineInput) => computeAvailableSlots(input).map((s) => s.label);
 
 describe('computeAvailableSlots — boş gün', () => {
-  it('todo.md\'de belirtilen 15 saatin tamamını üretir', () => {
+  it('tam çalışma günü için 15 saatin tamamını üretir', () => {
     // Bu, dokümandaki randevu saatleri listesinin birebir karşılığı.
     expect(labels(makeInput())).toEqual([
       '09:00',

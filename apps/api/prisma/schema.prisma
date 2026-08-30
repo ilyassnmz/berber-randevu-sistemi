@@ -1,5 +1,5 @@
 // Özdede Hair Studio — WhatsApp Randevu Sistemi
-// Veri modeli. Tasarım gerekçeleri için bkz. todo.md → "M1 — Veri Modeli".
+// Veri modeli. Tasarım gerekçeleri aşağıdaki dört ilkede.
 //
 // Dört ilke:
 //   1. Zaman her yerde TIMESTAMPTZ — DATE + TIME ayrı kolonlar değil.
@@ -190,7 +190,7 @@ model Customer {
   /// Müşterinin son mesaj attığı an. WhatsApp 24 saat penceresi bundan hesaplanır.
   lastInboundAt DateTime? @map("last_inbound_at") @db.Timestamptz(3)
 
-  /// Spam koruması (todo.md M4/M6): kayan 1 dakikalık pencerede gelen mesaj
+  /// Spam koruması: kayan 1 dakikalık pencerede gelen mesaj
   /// sayısı. DB'de tutulur, bellekte DEĞİL — birden fazla sunucu örneği
   /// çalışsa bile sayaç ortak kalsın diye (bkz. chatbot/states.ts başındaki
   /// aynı gerekçe).
@@ -568,7 +568,7 @@ model JobLock {
   @@map("job_locks")
 }
 
-/// `Idempotency-Key` başlığı desteği (todo.md M3): aynı anahtarla tekrar
+/// `Idempotency-Key` başlığı desteği: aynı anahtarla tekrar
 /// gelen bir istek (ağ hatası sonrası yeniden deneme gibi) işi tekrar
 /// yapmak yerine ilk seferin yanıtını aynen döner.
 model IdempotencyKey {

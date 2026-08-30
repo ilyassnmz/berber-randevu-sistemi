@@ -766,7 +766,7 @@ export async function markNoShow(
     metadata: { customerId: appointment.customerId },
   });
 
-  // todo.md M6 "Kötüye Kullanım Önlemleri": 3. no-show'da uyarı mesajı.
+  // Kötüye kullanım önlemi: 3. no-show'da uyarı mesajı.
   // Yalnızca eşiğe TAM ulaşıldığında gönderilir (=== 3) — her sonraki
   // no-show'da tekrar tekrar uyarı gitmesin diye.
   if (updatedCustomer.noShowCount === 3) {

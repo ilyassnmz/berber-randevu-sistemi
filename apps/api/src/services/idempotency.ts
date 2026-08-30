@@ -2,7 +2,7 @@ import { prisma } from '../db/client.js';
 import { logger } from '../lib/logger.js';
 
 /**
- * `Idempotency-Key` desteği (todo.md M3).
+ * `Idempotency-Key` başlığı desteği.
  *
  * Ağ hatası sonrası aynı isteği tekrar gönderen bir istemci (panelde
  * walk-in randevu oluştururken tipik senaryo: istek gönderildi, yanıt hiç

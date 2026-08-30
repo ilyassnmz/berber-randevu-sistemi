@@ -8,7 +8,8 @@ Sistem **iki ayrı adres** sunuyor, ikisi de aynı sunucudaki tek Caddy'den:
 | `panel.ozdedehairstudio.com` | Berber paneli (`apps/panel`) |
 
 > ℹ️ WhatsApp Cloud API **kullanılmıyor**. Randevu alma siteye taşındı;
-> WhatsApp tarafı kod gerektirmiyor (bkz. [`WHATSAPP-KURULUM.md`](../WHATSAPP-KURULUM.md)).
+> WhatsApp tarafı kod gerektirmiyor: ücretsiz WhatsApp Business uygulamasının
+> "Karşılama mesajı" özelliği siteye yönlendiriyor.
 > Bu kılavuzdaki hiçbir adım Meta hesabına ihtiyaç duymaz.
 
 ## Ön koşullar (kullanıcı tarafından hazırlanır)
@@ -145,10 +146,10 @@ makinesinden `scp` ile gönderilir:
 scp -i ~/.ssh/id_ed25519 -r \
     apps/api/src apps/web/src apps/panel/src packages/shared/src \
     deploy docker-compose.yml \
-    deploy@2.28.63.218:/opt/ozdede/
+    deploy@SUNUCU_IP:/opt/ozdede/
 
 # Sonra sunucuda
-ssh -i ~/.ssh/id_ed25519 deploy@2.28.63.218 \
+ssh -i ~/.ssh/id_ed25519 deploy@SUNUCU_IP \
     'cd /opt/ozdede && docker compose up -d --build'
 ```
 
@@ -167,8 +168,8 @@ cd apps/api && npx prisma migrate deploy   # geliştirme makinesinden
 
 Kod tarafında **yapılacak bir şey yok** — Cloud API kullanılmıyor.
 
-Berberin telefonunda WhatsApp Business uygulamasının karşılama mesajı
-ayarlanır: [`WHATSAPP-KURULUM.md`](../WHATSAPP-KURULUM.md).
+Berberin telefonunda WhatsApp Business uygulamasının "Karşılama mesajı"
+özelliği açılır ve metne randevu sitesinin adresi yazılır.
 
 `.env` içindeki `WHATSAPP_*` alanları boş kaldığı sürece bot sahte
 istemciyle çalışır, hiçbir mesaj göndermez ve hiçbir şeyi bozmaz. İleride

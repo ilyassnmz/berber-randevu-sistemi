@@ -1,129 +1,216 @@
 # 💈 Özdede Hair Studio — Online Randevu Sistemi
 
-Müşteriler **internet sitesinden** randevu alır, berberler mobil web panelinden yönetir.
+Bir berber dükkanı için yazılmış, üretimde çalışan randevu sistemi.
+Müşteriler internet sitesinden randevu alır; berberler mobil öncelikli bir
+panelden günlerini yönetir.
 
-| Adres | Ne? | Uygulama |
+| Adres | Ne | Uygulama |
 |---|---|---|
 | `ozdedehairstudio.com` | Müşteri randevu sitesi | `apps/web` |
 | `panel.ozdedehairstudio.com` | Berber paneli (PWA) | `apps/panel` |
 
-> ⚠️ **Mimari değişti.** Proje başlangıçta randevuları WhatsApp chatbot'u
-> üzerinden alıyordu. Berberin isteği üzerine randevu alma siteye taşındı;
-> WhatsApp artık yalnızca siteye **yönlendirme** yapıyor ve bunun için kod
-> değil, ücretsiz WhatsApp Business uygulamasının "Karşılama mesajı"
-> özelliği kullanılıyor.
->
-> Sebebi: WhatsApp Cloud API bir numarayı devraldığında o numara WhatsApp
-> uygulamasından çıkıyor; berber kendi numarasını günlük hayatta kullanmaya
-> devam etmek istedi. Chatbot kodu silinmedi, uykuda duruyor.
->
-> Ayrıntı: **[DURUM.md](DURUM.md)** · Berber için kurulum: **[WHATSAPP-KURULUM.md](WHATSAPP-KURULUM.md)**
-
-Yol haritası ve teknik kararlar için: **[todo.md](todo.md)**
+**Yığın:** TypeScript · Node.js + Express · PostgreSQL (Prisma) · React + Vite ·
+Docker Compose + Caddy
 
 ---
 
-## Durum
+## İçindekiler
 
-| Aşama | Durum |
-|---|---|
-| Sprint 0 — Temel altyapı | ✅ Tamamlandı |
-| M1 — Veri modeli | ✅ Tamamlandı |
-| M2 — Slot motoru | ✅ Tamamlandı |
-| M3 — Backend API | ✅ Tamamlandı |
-| M4 — Güvenlik | ✅ Tamamlandı |
-| M5 — WhatsApp Cloud API | 💤 Kod hazır ama **kullanılmıyor** (yukarıdaki nota bakın) |
-| M6 — Chatbot | 💤 Tamamlandı ama **uykuda** — randevu akışı siteye taşındı |
-| M7 — Panel (PWA) | ✅ Tamamlandı |
-| M9 — Hatırlatma cron'ları | 💤 Kod hazır — Cloud API olmadan mesaj gönderilemiyor |
-| M8 — Gizlilik/KVKK sayfası | ✅ Tamamlandı (`/gizlilik`) |
-| Herkese açık randevu API'si | ✅ Tamamlandı (`/api/v1/public`) |
-| Müşteri randevu sitesi (`apps/web`) | ✅ Tamamlandı |
-| Üretime alma (Hetzner + domain) | ✅ Canlı (`ozdedehairstudio.com`) |
-| İki siteli dağıtım (site + panel) | ⚪ Yapılandırma hazır — **Natro'da `panel` A kaydı bekleniyor** |
-
-**Hazır olanlar:** Veri modeli (15 tablo, Neon'da) · çakışma kısıtı · slot motoru · kimlik doğrulama · randevu API'si (walk-in, erteleme, `Idempotency-Key` dahil) · müşteri listesi/detayı · WhatsApp webhook (imza doğrulaması + idempotency + spam koruması) · chatbot (randevu alma — gerçek `pending_confirm` rezervasyonuyla, iptal, listeleme) · yönetim paneli (PWA — giriş, açık/koyu tema, günlük takvim, walk-in, randevu detayı, erteleme, kara liste) · hatırlatma cron'ları · gizlilik politikası sayfası · dağıtım dosyaları (Dockerfile, docker-compose, Caddyfile)
-
-**Sıradaki:** Natro'da `panel` alt alan adı için A kaydı oluşturulacak, ardından iki siteli dağıtım yapılacak. Adımlar: [DURUM.md](DURUM.md) · [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
-
-⚠️ A kaydı oluşturulmadan dağıtım yapılmamalı: kök alan adı artık müşteri sitesini sunacağı için berberler panele erişemez hale gelir.
-
-> ⚠️ **Docker dosyaları yerel makinede test edilemedi** — bu makinede Docker kurulu değil.
-> Dosyalar dikkatle yazıldı ve mantığı elle doğrulandı, ama gerçek `docker build`
-> ilk kez sunucuda çalıştırılacak. Bu, dağıtım adımının kendisinin bir parçası —
-> sunucu kurulurken build loglarını birlikte izleyip çıkabilecek hataları
-> orada düzelteceğiz.
-
-**Kapsam dışı bırakılanlar (v1.1/v1.2'ye ertelendi):** push bildirim, ayarlar ekranı (çalışma saatleri/izin/hizmet yönetimi paneli — şu an yalnızca DB'den), müşteri geçmişi ekranı, istatistikler. Ayrıntı için [todo.md](todo.md).
+- [Ne yapar](#ne-yapar)
+- [Mimari](#mimari)
+- [Dikkate değer tasarım kararları](#dikkate-değer-tasarım-kararları)
+- [Kurulum](#kurulum)
+- [Komutlar](#komutlar)
+- [Proje yapısı](#proje-yapısı)
+- [Test](#test)
+- [Dağıtım](#dağıtım)
 
 ---
 
-## Gereksinimler
+## Ne yapar
 
-- **Node.js 20+** (kurulu: v22.17.0)
-- **Neon** hesabı — ücretsiz PostgreSQL, kurulum gerektirmez
+**Müşteri tarafı** — giriş yok, dört adım: hizmet → berber → gün/saat → bilgiler.
+
+- **Çoklu hizmet seçimi.** "Saç + Ağda" tek randevuda alınabilir. Süreler
+  toplanmaz: ikisi aynı oturumda yapılıyor. İstisna, "ayrı zaman ister"
+  işaretli hizmetler — yanlarında başka hizmet varken randevuyu bir oturum
+  uzatırlar. Kural hizmet adına değil veritabanındaki işarete bakar.
+- Randevu, tahmin edilemez bir bağlantıyla görüntülenip iptal edilebilir.
+- Kapalı günler tarih şeridinde baştan soluk gösterilir; "saat kalmadı"
+  mesajı yalnızca gerçekten dolu günler için çıkar (kapalı / izinli / dolu
+  ayrı ayrı anlatılır).
+
+**Berber tarafı** — telefona kurulabilen bir PWA.
+
+- Günlük akış: randevular ve boş saatler tek listede, geçmiş saatler dahil.
+- Kapıdan gelen müşteri için tek dokunuşla randevu, saat değiştirme, iptal,
+  "geldi/gelmedi" işaretleme.
+- Çalışma saatleri, izin günleri, hizmet süresi/fiyatı ve yeni berber ekleme
+  panelden yönetilir.
+- Müşteri listesi, randevu geçmişi, kara liste ve dönemsel istatistikler.
+- Yeni randevu geldiğinde telefona web push bildirimi.
+
+**Kötüye kullanıma karşı** — sistem herkese açık ve telefon doğrulaması yok:
+
+- Bir numara, güne yalnızca bir randevu alabilir.
+- Aynı cihazdan günde en fazla üç *farklı* numaraya randevu alınabilir. Cihaz,
+  IP'nin HMAC özetiyle tanınır — ham IP hiç saklanmaz.
+- Saldırı hâlinde berber, aynı cihazdan gelen tüm randevuları tek işlemle
+  iptal edebilir.
+- Randevu yazma ucunda ayrı ve dar bir hız sınırı var (mobil operatörlerin
+  CGNAT'ı yüzünden bilerek gevşek tutuldu — aynı IP'nin arkasında gerçek
+  müşteriler var).
+
+---
+
+## Mimari
+
+```
+                    ┌──────────────┐
+   müşteri  ───────▶│  apps/web    │──┐
+                    └──────────────┘  │   /api/v1/public   ┌──────────────┐
+                                      ├───────────────────▶│   apps/api   │──▶ PostgreSQL
+                    ┌──────────────┐  │   /api/v1/*        │   (Express)  │
+   berber   ───────▶│  apps/panel  │──┘   (kimlik doğrulamalı)└──────────────┘
+                    └──────────────┘
+                                          packages/shared
+                                    (zod şemaları, iş kuralları)
+```
+
+npm workspaces ile tek depo. `packages/shared` yalnızca tip paylaşımı için
+değil: telefon normalleştirme, randevu süresi hesabı ve doğrulama şemaları
+burada yaşıyor ve **hem sunucu hem iki arayüz aynı fonksiyonu çağırıyor.**
+Ekranda yazan süre ile takvimde ayrılan sürenin ayrışması böylece mümkün değil.
+
+Herkese açık uçlar (`/api/v1/public`) ayrı bir router'da ve ayrı bir servis
+katmanından geçiyor. Sebebi mimari: panel uçlarında `req.auth` her sınırı
+kendiliğinden çiziyor (hangi dükkan, hangi berber), herkese açık tarafta böyle
+bir sınır yok — dolayısıyla her sınır elle çizilmek zorunda. Dükkan kimliği
+istemciden hiç alınmıyor, sunucuda çözülüyor.
+
+---
+
+## Dikkate değer tasarım kararları
+
+### Çakışan randevu veritabanı seviyesinde imkânsız
+
+İki müşteri aynı anda aynı saati seçerse "önce kontrol et sonra yaz" yetmez;
+kontrol ile yazma arasında her zaman bir aralık kalır. Kural bu yüzden
+veritabanına öğretildi:
+
+```sql
+EXCLUDE USING gist (barber_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)
+  WHERE (status IN ('pending_confirm', 'confirmed'))
+```
+
+Uygulamanın tek görevi `23P01` hatasını yakalayıp *"bu saat az önce doldu"*
+demek. Uygulama içindeki müsaitlik kontrolü yarışa karşı değil, kullanıcıya
+anlamlı mesaj vermek için. → [`appointment-overlap-constraint.sql`](apps/api/prisma/sql/appointment-overlap-constraint.sql)
+
+### Randevu süresi hiçbir yere gömülü değil
+
+45 dakika sayısı kodun hiçbir yerinde geçmez. Süre `services.duration_min`,
+ızgara adımı `shops.slot_step_min` kolonundan okunur; slot motoru sabit saat
+listesi yerine aralık çakışması hesaplar.
+
+Çoklu hizmet geldiğinde bu kararın karşılığı alındı: "Saç + Lazer 90 dakika"
+demek için motorda tek satır değişmedi. → [`slots.ts`](apps/api/src/services/slots.ts) · [`duration.ts`](packages/shared/src/duration.ts)
+
+Slot motoru bilerek **saf bir fonksiyon**: veritabanına hiç dokunmuyor, veriyi
+parametre olarak alıyor. Hataların yaşayacağı modül böylece veritabanı olmadan
+tam olarak test edilebiliyor.
+
+### Zaman her yerde UTC anı
+
+Veritabanında `TIMESTAMPTZ`; yerel saat yalnızca gösterimde. `DATE + TIME` ayrı
+kolonlar kullanılsaydı yukarıdaki çakışma kısıtı yazılamazdı. Türkiye 2016'dan
+beri kalıcı UTC+3 ama offset koda gömülmedi — `Intl` üzerinden hesaplanıyor.
+
+### Cron kilitleri advisory lock değil, satır tabanlı
+
+Başlangıçta `pg_try_advisory_lock` düşünülmüştü. Havuzlanmış bağlantıya
+(PgBouncer, transaction modu) karşı ölçüldüğünde **iki eşzamanlı çağrının
+ikisinin de** kilidi alabildiği görüldü: advisory lock'lar oturum sürekliliğine
+dayanıyor, havuzlama bunu bozuyor.
+
+Çözüm, `job_locks` tablosuna atomik `INSERT ... ON CONFLICT`. Sıradan bir DML
+işlemi olduğu için havuzlamadan etkilenmiyor. → [`lock.ts`](apps/api/src/jobs/lock.ts)
+
+### Panelde erişim jetonu bellekte, `localStorage`'da değil
+
+Sayfa yenilenince kaybolur; açılışta httpOnly çerezle sessizce yenisi alınır.
+`localStorage`'a yazılan bir jeton, siteye sızacak herhangi bir betikle (XSS)
+okunabilir olurdu. Yenileme jetonları da veritabanında ham değil, SHA-256
+özetiyle tutuluyor ve her kullanımda döndürülüyor.
+
+### Hiçbir şey silinmez
+
+Randevu iptal edilince durumu değişir, satır kalır; berber pasife alınır;
+randevusu olan hizmet silinmez, gizlenir. Geçmiş takvim, gelmedi sayacı ve
+denetim kaydı ancak böyle tutarlı kalıyor.
 
 ---
 
 ## Kurulum
 
-### 1. Bağımlılıklar
+Gereken: **Node.js 20+** ve bir **PostgreSQL** veritabanı (proje
+[Neon](https://neon.tech) ile geliştirildi — ücretsiz katman yeterli).
 
 ```bash
 npm install
+cp .env.example apps/api/.env
 ```
 
-### 2. Veritabanı (Neon)
+`apps/api/.env` içinde doldurulması gerekenler:
 
-1. [neon.tech](https://neon.tech) adresinde ücretsiz hesap aç
-2. Yeni proje oluştur — bölge olarak **Europe (Frankfurt)** seç (Türkiye'ye en yakın)
-3. Proje panelinden **Connection string**'i kopyala
+| Değişken | Ne |
+|---|---|
+| `DATABASE_URL` · `DIRECT_DATABASE_URL` | Postgres bağlantı adresi |
+| `JWT_ACCESS_SECRET` | En az 32 karakter rastgele değer |
+| `PUBLIC_SHOP_ID` | Sitenin ait olduğu dükkanın kimliği (seed sonrası) |
 
-### 3. Ortam değişkenleri
-
-```bash
-cp .env.example .env
-```
-
-`.env` dosyasını aç ve doldur:
-
-- `DATABASE_URL` ve `DIRECT_DATABASE_URL` → Neon'dan kopyaladığın adres
-- `JWT_ACCESS_SECRET` → aşağıdaki komutla üret:
+Rastgele anahtar üretmek için:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
 ```
 
-WhatsApp ayarları geliştirme sırasında boş kalabilir — bot devre dışı çalışır, API ve panel normal çalışmaya devam eder.
-
-### 4. Veritabanı şemasını oluştur
+Şemayı kurup başlangıç verisini yükleyin:
 
 ```bash
 npm run db:migrate:deploy --workspace=@berber/api
 npm run db:seed --workspace=@berber/api
 ```
 
-Seed komutu Müslüm ve Fırat için **rastgele şifreler üretip bir kez ekrana basar** — bir parola yöneticisine kaydet, şifreler geri alınamaz.
+> Seed, berber hesapları için **rastgele şifre üretip bir kez ekrana basar.**
+> Şifreler geri alınamaz; bir parola yöneticisine kaydedin.
 
-> **Yeni migration eklerken dikkat:** Çakışma kısıtı Prisma şemasıyla ifade
-> edilemiyor, o yüzden ilk migration dosyasının sonuna elle eklendi
-> ([kaynak](apps/api/prisma/sql/appointment-overlap-constraint.sql)).
-> `prisma migrate dev` bunu görüp şemayla uyumsuz sanabilir; şüphe duyarsan
-> `--create-only` ile üret, SQL'i gözden geçir, sonra uygula.
-
-### 5. Çalıştır
-
-İki ayrı terminalde:
+Çalıştırın (ayrı terminallerde):
 
 ```bash
-npm run dev --workspace=@berber/api      # → http://localhost:3000/healthz
+npm run dev --workspace=@berber/api      # http://localhost:3000/healthz
+npm run dev --workspace=@berber/panel    # http://localhost:5173
+npm run dev --workspace=@berber/web      # http://localhost:5174
 ```
 
-```bash
-npm run dev --workspace=@berber/panel    # → http://localhost:5173
-```
+Her iki arayüz de `/api` isteklerini geliştirme sırasında otomatik olarak
+API'ye yönlendirir.
 
-Panel, `/api` isteklerini geliştirme sırasında otomatik olarak API'ye yönlendirir (bkz. `apps/panel/vite.config.ts`). Seed adımında verilen e-posta/şifre ile giriş yapılabilir.
+### İsteğe bağlı yapılandırma
+
+Hiçbiri zorunlu değil; eksikse ilgili özellik **sessizce devre dışı kalır,
+uygulama normal çalışır.**
+
+| Değişken | Ne olur |
+|---|---|
+| `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` | Berbere yeni randevu bildirimi |
+| `SENTRY_DSN` | Hata izleme (telefon/şifre/jeton ayıklanır) |
+| `WHATSAPP_*` | Uykudaki WhatsApp chatbot'u etkinleşir |
+
+> **Şema değişikliği eklerken:** Çakışma kısıtı Prisma şemasıyla ifade
+> edilemiyor, bu yüzden ilk migration dosyasının sonuna elle eklendi. `prisma
+> migrate dev` bunu şemayla uyumsuz sanabilir; `--create-only` ile üretip SQL'i
+> gözden geçirdikten sonra uygulayın.
 
 ---
 
@@ -131,220 +218,94 @@ Panel, `/api` isteklerini geliştirme sırasında otomatik olarak API'ye yönlen
 
 | Komut | Ne yapar |
 |---|---|
-| `npm run dev --workspace=@berber/api` | API'yi geliştirme modunda başlatır (değişiklikte yeniden yükler) + zamanlanmış işleri çalıştırır |
-| `npm run dev --workspace=@berber/panel` | Paneli geliştirme modunda başlatır |
-| `npm test` | Birim testlerini çalıştırır (tüm workspace'ler) |
-| `npm run test:integration --workspace=@berber/api` | Gerçek veritabanına karşı entegrasyon testleri |
-| `npm run typecheck` | Tip kontrolü (tüm workspace'ler) |
-| `npm run build` | Üretim derlemesi (tüm workspace'ler) |
-| `npm run db:migrate` | Migration uygular (geliştirme) |
-| `npm run db:migrate:deploy --workspace=@berber/api` | Migration uygular (üretim) |
-| `npm run db:seed --workspace=@berber/api` | Başlangıç verisini yükler |
-| `npm run db:studio --workspace=@berber/api` | Veritabanını tarayıcıda görüntüler |
-| `npm run whatsapp:templates --workspace=@berber/api` | Meta'ya girilecek şablon metinlerini yazdırır |
+| `npm run dev --workspace=@berber/api` | API + zamanlanmış işler |
+| `npm run dev --workspace=@berber/panel` | Berber paneli |
+| `npm run dev --workspace=@berber/web` | Müşteri sitesi |
+| `npm test` | Birim testleri (veritabanı gerekmez) |
+| `npm run test:integration --workspace=@berber/api` | Entegrasyon testleri |
+| `npm run typecheck` | Tip kontrolü |
+| `npm run build` | Üretim derlemesi |
+| `npm run db:studio --workspace=@berber/api` | Veritabanını tarayıcıda aç |
 
 ---
 
 ## Proje yapısı
 
 ```
-apps/api/
+apps/api/                 Express + Prisma
   prisma/
-    schema.prisma      → Veri modeli (15 tablo)
-    seed.ts            → Başlangıç verisi
-    sql/               → Prisma'nın ifade edemediği SQL (çakışma kısıtı)
+    schema.prisma         Veri modeli (16 tablo)
+    sql/                  Prisma'nın ifade edemediği SQL (çakışma kısıtı)
   src/
-    app.ts             → Express uygulaması (middleware zinciri, rotalar)
-    index.ts           → Giriş noktası, düzgün kapanma (graceful shutdown)
-    config/env.ts      → Ortam doğrulama — eksikse uygulama açılışta ölür
-    db/client.ts       → Prisma istemcisi
-    jobs/
-      lock.ts          → Satır tabanlı iş kilidi (job_locks tablosu)
-      reminders.ts     → 1 gün / 1 saat önce hatırlatma
-      cleanup.ts       → Süresi dolmuş kayıt temizliği (oturum, jeton, idempotency)
-      scheduler.ts     → node-cron zamanlaması
-    lib/
-      time.ts          → Saat dilimi hesapları
-      errors.ts        → Hata tipleri + veritabanı hata çevirisi
-      logger.ts        → Loglama (telefon numaraları maskelenir)
-    middleware/
-      auth.ts          → Kimlik doğrulama + yetki kontrolü
-      error-handler.ts → Merkezi hata yakalama
-      (hız sınırı ayrı bir dosya değil — app.ts ve routes/auth.ts içinde)
-    routes/            → HTTP uçları
+    config/env.ts         Ortam doğrulaması — eksikse uygulama açılışta ölür
+    jobs/                 Cron: hatırlatmalar, temizlik, satır tabanlı kilit
+    lib/                  Saat dilimi, hata çevirisi, loglama (telefon maskeli)
+    middleware/           Kimlik doğrulama + yetki, merkezi hata yakalama
+    routes/               HTTP uçları (public/ ayrı ve kimlik doğrulamasız)
     services/
-      slots.ts         → Slot motoru ⭐
-      appointments.ts  → Randevu iş mantığı (oluşturma, iptal, erteleme...)
-      auth.ts          → Giriş, jeton rotasyonu, hesap kilitleme
-      customers.ts     → Müşteri listesi/detayı, kara liste
-      audit.ts         → Denetim kaydı
-      idempotency.ts   → `Idempotency-Key` desteği
-      whatsapp/        → Meta istemcisi + sahte istemci + imza doğrulama
-      chatbot/         → Durum makinesi + spam koruması
-apps/panel/
-  src/
-    lib/
-      api.ts           → fetch sarmalayıcı — jeton yenileme, 401 yönetimi
-      authStore.ts      → Oturum durumu (jeton BELLEKTE, localStorage'da değil)
-      theme.ts          → Açık/koyu tema tercihi (localStorage)
-    pages/              → LoginPage, CalendarPage
-    components/         → AppointmentCard, WalkInModal, AppointmentDetailModal,
-                          RescheduleModal...
-packages/shared/
-  src/
-    constants.ts       → Durum enum'ları
-    phone.ts           → Telefon normalleştirme (E.164)
-    schemas.ts         → Zod şemaları (API + panel ortak)
+      slots.ts            Slot motoru — saf fonksiyon ⭐
+      appointments.ts     Randevu iş mantığı
+      public-booking.ts   Herkese açık randevu akışı
+      auth.ts             Giriş, jeton rotasyonu, hesap kilitleme
+      whatsapp/           Meta istemcisi + sahte istemci + imza doğrulama
+      chatbot/            Durum makinesi (uykuda)
+apps/panel/               Berber paneli (React, PWA)
+apps/web/                 Müşteri randevu sitesi (React)
+packages/shared/          Zod şemaları, telefon normalleştirme, süre hesabı
+deploy/                   Dockerfile'lar, Caddyfile, dağıtım kılavuzu
 ```
-
----
-
-## Bilinmesi gereken üç tasarım kararı
-
-### 1. Çakışan randevu veritabanı seviyesinde imkansız
-
-İki müşteri aynı anda aynı saati seçerse, "önce kontrol et sonra yaz" mantığı yetmez — kontrol ile yazma arasında her zaman bir aralık kalır.
-
-Bunun yerine kural veritabanına öğretildi:
-
-```sql
-EXCLUDE USING gist (barber_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)
-  WHERE (status IN ('pending_confirm', 'confirmed'))
-```
-
-Uygulamanın tek görevi `23P01` hatasını yakalayıp *"bu saat az önce doldu"* demek. Ayrıntı: [`prisma/sql/appointment-overlap-constraint.sql`](apps/api/prisma/sql/appointment-overlap-constraint.sql)
-
-### 2. Randevu süresi (45 dk) hiçbir yere gömülü değil
-
-Süre `services.duration_min`, ızgara adımı `shops.slot_step_min` kolonundan okunur. Slot motoru sabit saat listesi yerine aralık çakışması hesaplar.
-
-Bugün sonuç sabit ızgarayla birebir aynı; ileride *"boyama 90 dakika"* demek tek bir `UPDATE`. Motorun bunu zaten desteklediğini garanti eden testler mevcut.
-
-### 3. Zaman her yerde UTC anı olarak saklanır
-
-Veritabanında `TIMESTAMPTZ`, yerel saat yalnızca gösterimde. Çalışma saatleri (`"09:00"`) dükkanın saat dilimine göre yorumlanır.
-
-Türkiye 2016'dan beri kalıcı UTC+3 ve yaz saati uygulamıyor, ama offset koda gömülmedi — `Intl` üzerinden hesaplanıyor.
-
-### 4. Cron kilitleri Postgres advisory lock DEĞİL, satır tabanlı
-
-Plan başlangıçta `pg_try_advisory_lock` öngörüyordu. Uygulama sırasında Neon'un
-havuzlanmış bağlantısına (PgBouncer, transaction modu) karşı ölçüldüğünde, iki
-eşzamanlı çağrının **ikisinin de** kilidi alabildiği görüldü — advisory lock'lar
-oturum sürekliliğine dayanıyor ve havuzlama bunu bozabiliyor.
-
-Çözüm `job_locks` tablosuna atomik `INSERT ... ON CONFLICT ... WHERE locked_until
-< now()`: sıradan bir DML işlemi olduğu için bağlantı havuzlamasından etkilenmiyor.
-Bkz. [`src/jobs/lock.ts`](apps/api/src/jobs/lock.ts).
-
-### 5. Panel'de erişim jetonu `localStorage`'da değil, bellekte
-
-Sayfa yenilenince kaybolur; `apps/panel/src/routes/ProtectedRoute.tsx` açılışta
-httpOnly çerezle sessizce yeni jeton alır. `localStorage`'a yazılan bir jeton,
-siteye sızan herhangi bir betikle (XSS) okunabilir olurdu.
 
 ---
 
 ## Test
 
-### Birim testleri — veritabanı gerektirmez
+**Birim testleri** — veritabanı gerektirmez, saniyeler sürer:
 
 ```bash
 npm test
 ```
 
-71 test. Yoğunlaştıkları yer, hataların yaşayacağı modüller:
+84 test. Yoğunlaştıkları yer hataların yaşayacağı modüller: slot motoru (31),
+saat dilimi hesapları (18), webhook imza doğrulaması (13), çoklu hizmet süre
+kuralı (12), telefon normalleştirme (9).
 
-- **Slot motoru** (31 test) — çalışma saatleri, izinler, dolu saatler, geçmiş saatler, rezervasyon penceresi, değişken süre
-- **Saat dilimi hesapları** (18 test) — UTC dönüşümü, gün sınırları, aralık çakışması
-- **Telefon normalleştirme** (9 test) — aynı numaranın 8 farklı yazımı tek forma iner
-- **Webhook imza doğrulaması** (13 test) — geçersiz/eksik imza, gövde değişikliği tespiti
-
-### Entegrasyon testleri — gerçek veritabanına bağlanır
+**Entegrasyon testleri** — gerçek veritabanına bağlanır:
 
 ```bash
 npm run test:integration --workspace=@berber/api
 ```
 
-99 test:
+219 test. Öne çıkanlar:
 
-- **Çakışma kısıtı** (7) — birim testi olarak yazılamaz, çünkü kısıt PostgreSQL'in
-  içinde yaşıyor. Sahte bir veritabanıyla test etmek tam da sınanmak istenen şeyi
-  atlamak olurdu. En önemlisi: aynı slota **eşzamanlı üç rezervasyon** gönderiliyor,
-  tam olarak birinin başarılı olduğu doğrulanıyor.
-- **Kimlik doğrulama** (22) — jeton rotasyonu, çalınmış jeton tespiti, hesap
-  kilitleme, kullanıcı sayımına karşı tek tip hata mesajı
-- **Randevu API'si** (30) — yetki sınırları (staff başkasının verisine erişemiyor),
-  walk-in, durum geçişleri, erteleme, sayfalama
-- **Chatbot** (27) — sahte WhatsApp istemcisiyle uçtan uca konuşma simülasyonu:
-  randevu alma, iptal, kara liste, opt-out, hatalı girdi yönetimi
-- **Cron işleri** (13) — kilit eşzamanlılığı, hatırlatma pencereleri, opt-out
-  müşteriye göndermeme
+- **Çakışma kısıtı** — birim testi olarak yazılamaz, çünkü kısıt PostgreSQL'in
+  içinde yaşıyor; sahte bir veritabanıyla test etmek tam da sınanmak isteneni
+  atlamak olurdu. Aynı slota **eşzamanlı üç rezervasyon** gönderilip tam olarak
+  birinin başarılı olduğu doğrulanıyor.
+- **Yetki sınırları** — `staff` rolündeki berberin, istemciden ne gönderirse
+  göndersin başkasının verisine erişemediği.
+- **Herkese açık uçlar** — başka dükkanın kimliğinin sızdırılamaması, müşteri
+  telefonunun yanıtlarda dönmemesi, kuralların atlanamaması.
+- **Kimlik doğrulama** — jeton rotasyonu, çalınmış jeton tespiti, hesap
+  kilitleme, kullanıcı sayımına karşı tek tip hata mesajı.
 
-Panel, tarayıcıda gerçek giriş bilgileriyle uçtan uca elle test edildi (giriş,
-oturum kalıcılığı, staff/admin yetki ayrımı, walk-in oluşturma, durum
-değişiklikleri, iptal akışı) — ayrı bir otomatik tarayıcı test takımı yok.
-
----
-
-## WhatsApp — Meta hesabı olmadan geliştirme
-
-Bot numarası hazır olmadan da chatbot'un tamamı çalışıyor ve test ediliyor.
-
-`.env` içindeki `WHATSAPP_*` alanları boşsa uygulama **sahte istemciye** düşer:
-mesajlar hiçbir yere gönderilmez, konsola yazılır ve bellekte tutulur. Chatbot
-akışının 27 testi bu istemci üzerinden koşuyor.
-
-Gerçek numara geldiğinde yapılacaklar:
-
-1. `npm run whatsapp:templates --workspace=@berber/api` → çıktıyı Meta paneline gir
-   (şablon onayı 1-3 gün sürer, onaysız hatırlatma gönderilemez)
-2. `.env` içine `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`,
-   `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` gir
-3. Meta panelinde webhook adresi: `https://<alan-adı>/webhook/whatsapp`
-
-Kodda hiçbir değişiklik gerekmiyor — istemci seçimi yapılandırmadan geliyor.
-
-> ℹ️ Doğrulanmamış Meta hesabı 24 saatte 250 benzersiz müşteriye mesaj
-> gönderebilir. Bir berber için fazlasıyla yeterli; lansman Business
-> Verification'ı beklemek zorunda değil.
-
-> ⚠️ **Bu alanlar `NODE_ENV=production`'da da opsiyoneldir** — bilinçli bir
-> tasarım kararı. Zorunlu tutulsaydı, Meta hesabı hazır olmadan üretim
-> sunucusu hiç açılamazdı. Yol haritası önce sunucunun WhatsApp'sız
-> doğrulanmasını, sonra WhatsApp'ın bağlanmasını öngörüyor.
+> ⚠️ Entegrasyon testleri `TEST_DATABASE_URL` tanımlı değilse ya da bu değer
+> üretim veritabanını gösteriyorsa **çalışmayı reddeder.** Bu koruma sonradan
+> eklendi: testler bir dönem üretimle aynı veritabanına yazdı ve yarıda kalan
+> bir koşudan artakalan kayıt canlı siteyi düşürdü.
 
 ---
 
-## Dağıtım (Hetzner)
+## Dağıtım
 
-Docker Compose ile tek komutla ayağa kalkacak şekilde hazırlandı:
-`api` konteyneri (Node.js) + `caddy` konteyneri (panel'in statik dosyalarını
-servis eder, API'yi ters proxy'ler, HTTPS sertifikasını otomatik alır).
-Veritabanı ayrı bir konteyner değil — geliştirmede kullanılan Neon.
+Docker Compose ile iki konteyner: `api` (Node.js) ve `caddy` (iki sitenin
+statik dosyalarını sunar, API'yi ters proxy'ler, HTTPS sertifikasını otomatik
+alır). Veritabanı konteyner değil, yönetilen bir servis.
 
-Adım adım kurulum: **[`deploy/DEPLOY.md`](deploy/DEPLOY.md)**
-
-```
-deploy/
-  Dockerfile.api      → API imajı
-  Dockerfile.caddy     → Panel derlemesi + Caddy
-  Caddyfile             → Ters proxy + statik dosya kuralları
-  .env.example          → Üretim ortam değişkeni şablonu
-  DEPLOY.md              → Adım adım kurulum
-docker-compose.yml      → İkisini birlikte ayağa kaldırır
+```bash
+docker compose up -d --build
 ```
 
-> ⚠️ Bu makinede Docker kurulu olmadığı için `docker build` yerel olarak
-> denenemedi. Dosyalar dikkatle yazıldı, ama ilk gerçek testleri sunucu
-> kurulumu sırasında yapılacak.
+Adım adım kurulum, yedekleme ve geri yükleme: **[`deploy/DEPLOY.md`](deploy/DEPLOY.md)**
 
----
-
-## Notlar
-
-- **Konum**: Proje bilerek OneDrive **dışında** (`C:\Projeler\Berber`). OneDrive
-  içindeyken `node_modules` senkronizasyonu Prisma'nın dosya değiştirmesini
-  engelliyor ve `EPERM` hataları çıkıyordu.
-- **Prisma uyarısı**: `package.json#prisma` alanı Prisma 7'de kaldırılacak. Şu an
-  çalışıyor; geçiş sırasında `prisma.config.ts`'e taşınacak.
+> Caddyfile imaja build sırasında kopyalanıyor. Değiştiğinde `--build` şart;
+> konteyneri yeniden başlatmak yetmez.

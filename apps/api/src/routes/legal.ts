@@ -17,6 +17,14 @@ legalRouter.get('/gizlilik', (_req, res) => {
   res.type('html').send(PRIVACY_POLICY_HTML);
 });
 
+/**
+ * KVKK başvuruları için iletişim adresi.
+ *
+ * Ortam değişkeninden okunuyor: aydınlatma metninde gerçek bir adres bulunmak
+ * zorunda ama bu adres dükkana özel, kaynak koda ait değil.
+ */
+const KVKK_EPOSTA = process.env.LEGAL_CONTACT_EMAIL ?? 'info@ozdedehairstudio.com';
+
 const PRIVACY_POLICY_HTML = `<!doctype html>
 <html lang="tr">
 <head>
@@ -90,7 +98,7 @@ const PRIVACY_POLICY_HTML = `<!doctype html>
   <h2>6. İletişim</h2>
   <div class="contact">
     <p>Verilerinizle ilgili sorularınız veya talepleriniz için:</p>
-    <p>📧 <a href="mailto:muslum@ozdede.com">muslum@ozdede.com</a></p>
+    <p>📧 <a href="mailto:${KVKK_EPOSTA}">${KVKK_EPOSTA}</a></p>
   </div>
 </body>
 </html>`;

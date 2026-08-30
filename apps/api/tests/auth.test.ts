@@ -6,8 +6,7 @@ import { createFixture, destroyFixture, testPrisma, extractCookie, type TestFixt
 /**
  * Kimlik doğrulama — entegrasyon testleri.
  *
- * Bu testler todo.md → "M4 — Güvenlik Testleri" bölümündeki maddelerin
- * otomatik karşılığıdır. Elle test bir kez yapılır, bunlar her commit'te.
+ * Bu testler güvenlik gereksinimlerinin otomatik karşılığıdır. Elle test bir kez yapılır, bunlar her commit'te.
  */
 
 const app = createApp();

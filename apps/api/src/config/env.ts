@@ -49,7 +49,7 @@ const baseSchema = z.object({
  * ⚠️ WhatsApp ayarları ÜRETİMDE DE opsiyonel bırakıldı — bilinçli bir tercih.
  *
  * Yol haritası, sunucunun ve panelin WhatsApp'tan önce, WhatsApp'sız olarak
- * yayına alınıp doğrulanmasını öngörüyor (bkz. todo.md). Bu ayarlar production'da
+ * yayına alınıp doğrulanmasını öngörüyordu. Bu ayarlar production'da
  * zorunlu tutulsaydı, Meta hesabı hazır olmadan sunucu HİÇ AÇILAMAZDI — tam da
  * "önce her şeyin sorunsuz çalıştığını doğrula, WhatsApp'ı en son bağla" isteğinin
  * önüne geçerdi. Eksik olduğunda `index.ts` bir uyarı loglar ve bot sahte

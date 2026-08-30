@@ -6,7 +6,7 @@ import { createFixture, destroyFixture, testPrisma, type TestFixture } from './h
 /**
  * Müşteri listesi/detayı — entegrasyon testleri.
  *
- * todo.md M3'te MVP kapsamında listelenmiş ama uzun süre hiçbir route bunu
+ * MVP kapsamında listelenmişti ama uzun süre hiçbir route bunu
  * karşılamıyordu (schemas.ts'teki listCustomersQuerySchema ölü kodtu).
  */
 

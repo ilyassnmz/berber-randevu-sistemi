@@ -4,7 +4,7 @@ import { setWhatsAppClient, type WhatsAppClient, type SendResult } from '../src/
 import { sendToCustomer } from '../src/services/whatsapp/messaging.js';
 
 /**
- * Meta hata kodu davranışları — todo.md M5.
+ * Meta hata kodu davranışları.
  *
  * `FakeWhatsAppClient` her zaman başarılı döndüğü için burada kendi sahte
  * istemcimizi yazıyoruz: gerçek Meta'nın 131047 (yeniden etkileşim gerekli)

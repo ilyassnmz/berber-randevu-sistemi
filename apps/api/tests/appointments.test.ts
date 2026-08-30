@@ -106,7 +106,7 @@ describe('Yetkilendirme', () => {
   });
 
   it('staff, başka berberin boş saatlerini sorgulayamaz', async () => {
-    // todo.md → "Fırat, Müslüm'ün randevularını API'den çekemiyor mu?"
+    // Güvenlik gereksinimi: Fırat, Müslüm'ün randevularını API'den çekemiyor.
     const res = await request(app)
       .get(`${BASE}/slots`)
       .set(auth(staffToken))

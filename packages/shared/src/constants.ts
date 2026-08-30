@@ -3,7 +3,6 @@
  *
  * ⚠️ Randevu süresi (45 dk) BURADA YOK ve hiçbir yerde sabit olarak yazılmaz.
  * Süre `services.duration_min`, slot adımı `shops.slot_step_min` kolonundan okunur.
- * Bkz. todo.md → "M2 — Slot Motoru".
  */
 
 export const APPOINTMENT_STATUS = {

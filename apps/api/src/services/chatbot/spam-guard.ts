@@ -1,7 +1,7 @@
 import { prisma } from '../../db/client.js';
 
 /**
- * Spam koruması (todo.md M4 + M6):
+ * Spam koruması:
  *
  *   - M4 "Webhook rate limit telefon numarasına göre" ve
  *   - M6 "Spam: 1 dakikada 10+ mesaj → 5 dakika sessizlik"
@@ -16,7 +16,7 @@ import { prisma } from '../../db/client.js';
 
 const BURST_WINDOW_MS = 60_000;
 /**
- * todo.md "10+" diyor, ama tek bir meşru randevu akışı (buton tıklamalarıyla)
+ * Eşik "10+" olarak belirlenmişti, ama tek bir meşru randevu akışı (buton tıklamalarıyla)
  * ~7-8 mesaj sürüyor — hızlı bir müşteri art arda iki akış denese (randevu al
  * + hemen ardından bir tane daha) 10'u kolayca aşar ve haksız yere susturulur.
  * 20, gerçek bir kullanıcının birkaç akışını rahatça karşılarken otomatik/betik

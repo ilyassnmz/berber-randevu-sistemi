@@ -34,7 +34,7 @@ import {
  *
  * ⚠️ ŞU AN KULLANILMIYOR — UYKUDA. Silmeden önce burayı okuyun.
  *
- * Randevu alma WhatsApp'tan internet sitesine taşındı (bkz. DURUM.md).
+ * Randevu alma WhatsApp'tan internet sitesine taşındı.
  * WhatsApp tarafında artık Cloud API değil, ücretsiz WhatsApp Business
  * uygulamasının "Karşılama mesajı" özelliği kullanılıyor: müşteriye siteye
  * yönlendiren bir metin gidiyor, arada bizim kodumuz YOK.
@@ -53,7 +53,7 @@ import {
  *
  * ── Aşağısı, bot etkinken geçerli olan akış ───────────────────────
  *
- * Akış (todo.md → "M6 — Chatbot"):
+ * Akış:
  *
  *   Ana menü → [ad sorma*] → berber → tarih → saat → hizmet → onay
  *   * yalnızca ilk kez gelen müşteriye
@@ -569,7 +569,7 @@ async function askTime(args: DispatchArgs): Promise<void> {
   const slots = await getAvailableSlots(shop.id, context.barberId, [service.id], context.date);
 
   if (slots.length === 0) {
-    // Kapalı gün mü, yoksa gün dolu mu? todo.md iki ayrı mesaj istiyor —
+    // Kapalı gün mü, yoksa gün dolu mu? İki ayrı mesaj gerekiyor —
     // aynı jenerik "saat kalmadı" ikisini de gizler, müşteri kapalı bir güne
     // ısrar edip edemeyeceğini anlayamaz.
     const { year, month, day } = parseDateString(context.date);
@@ -715,7 +715,7 @@ async function handleSelectService(args: DispatchArgs): Promise<void> {
 
 /**
  * Özet ekranını gösterir VE randevuyu `pending_confirm` olarak DB'de rezerve
- * eder — todo.md'nin "5 dakika içinde onaylanmazsa randevu oluşturulmadı"
+ * eder — "5 dakika içinde onaylanmazsa randevu oluşturulmadı"
  * akışı ancak böyle gerçek olabilir. Rezervasyon burada yapılmazsa (eskiden
  * olduğu gibi yalnızca "Onayla"ya basılınca oluşturulursa) 5 dakikalık
  * `confirmDeadline`'ın koruyacağı hiçbir kayıt yoktur; `expirePendingAppointments`

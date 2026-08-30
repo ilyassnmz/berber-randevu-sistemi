@@ -51,7 +51,7 @@ interface SendOutcome {
 }
 
 /**
- * Meta'nın bilinen hata kodları için özel davranış (todo.md M5).
+ * Meta'nın bilinen hata kodları için özel davranış.
  *
  * Üçü de sadece `logger.error` ile geçiştirilmemeli:
  *   - 131047 (yeniden etkileşim gerekli): `sendToCustomer` bunu yakalayıp

@@ -63,7 +63,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
  *
  * Panel ve müşteri sitesi birer PWA; telefonda önbelleğe alınmış ESKİ bir
  * sürüm, sunucu güncellendikten sonra da bir süre çalışmaya devam edebiliyor
- * (bu daha önce gerçekten yaşandı — bkz. DURUM.md, service worker sorunu).
+ * (bu daha önce gerçekten yaşandı: eski service worker güncel sürümü ele geçirdi).
  * Eski sürüm tekil `serviceId` gönderiyor. Bu alan kaldırılsaydı, güncelleme
  * anında telefonundaki eski siteyle randevu almaya çalışan müşteri
  * "Geçersiz istek" hatası alırdı.

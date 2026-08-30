@@ -5,7 +5,7 @@ import { prisma } from '../db/client.js';
 /**
  * Bir berberin şifresini sıfırlar ve yeni şifreyi bir kez ekrana basar.
  *
- *     npm run reset-password --workspace=@berber/api -- muslum@ozdede.com
+ *     npm run reset-password --workspace=@berber/api -- ornek@example.com
  *
  * seed.ts'teki aynı üretim/hash mantığını kullanır. Şifre değişince diğer
  * cihazlardaki oturumlar (changePassword ile aynı gerekçeyle) kapatılır.

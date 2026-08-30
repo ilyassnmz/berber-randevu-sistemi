@@ -213,7 +213,7 @@ describe('Randevu alma akışı', () => {
 
   it('özet ekranı gösterilirken slot pending_confirm olarak rezerve edilir', async () => {
     // Onaylanmadan önce bile slot DB'de tutulmalı — aksi halde 5 dakikalık
-    // onay süresi hiçbir şeyi korumaz (todo.md'nin vaat ettiği davranış).
+    // onay süresi hiçbir şeyi korumaz (vaat edilen davranış bu).
     await send('merhaba');
     await send(ACTION.BOOK);
     await send('Ahmet Yılmaz');
