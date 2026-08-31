@@ -11,6 +11,7 @@ import {
   deleteTimeOff,
   createBarber,
 } from '../services/barbers.js';
+import { publicShopInfoOnbelleginiDusur } from '../services/public-booking.js';
 
 export const barbersRouter: Router = Router();
 
@@ -44,6 +45,9 @@ barbersRouter.post(
   asyncHandler(async (req, res) => {
     const input = createBarberSchema.parse(req.body);
     const result = await createBarber(req.auth!.shopId, input.name, input.email, input.role);
+
+    // Yeni berber sitedeki berber listesine girmeli (bkz. public-booking.ts).
+    publicShopInfoOnbelleginiDusur();
     res.status(201).json(result);
   }),
 );
@@ -63,6 +67,11 @@ barbersRouter.put(
   asyncHandler(async (req, res) => {
     const days = workingHoursSchema.parse(req.body);
     const workingHours = await updateWorkingHours(req.auth!.shopId, req.params.id!, days, req.auth!);
+
+    // Site, kapalı günleri haftalık düzenden okuyor ve bu yanıt önbellekli;
+    // berber bir günü kapattığında tarih şeridi hemen güncellensin diye
+    // önbellek düşürülüyor (bkz. services/public-booking.ts).
+    publicShopInfoOnbelleginiDusur();
     res.json({ workingHours });
   }),
 );

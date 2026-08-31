@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/error-handler.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { NotFoundError, ConflictError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
+import { publicShopInfoOnbelleginiDusur } from '../services/public-booking.js';
 
 export const servicesRouter: Router = Router();
 
@@ -56,6 +57,9 @@ servicesRouter.put(
       select: { id: true, name: true, durationMin: true, price: true, requiresOwnSlot: true, isActive: true },
     });
 
+    // Site açılışındaki `/shop` yanıtı önbellekli; değişikliğin anında
+    // görünmesi için önbellek düşürülüyor (bkz. services/public-booking.ts).
+    publicShopInfoOnbelleginiDusur();
     res.json({ service });
   }),
 );
@@ -63,8 +67,9 @@ servicesRouter.put(
 /**
  * Yeni hizmet ekler — yalnızca admin.
  *
- * Eklenen hizmet müşteri sitesinde ANINDA görünür: site hizmet listesini
- * her açılışta sunucudan çekiyor ve API yanıtları önbelleklenmiyor.
+ * Eklenen hizmet müşteri sitesinde ANINDA görünür: `/shop` yanıtı bellekte
+ * önbellekleniyor ama bu uç önbelleği düşürüyor, dolayısıyla siteye giren
+ * ilk ziyaretçi yeni listeyi görüyor.
  *
  * `sortOrder` verilmezse listenin SONUNA eklenir. Berber yeni bir hizmeti
  * eklerken sıralama düşünmek zorunda kalmasın diye; mevcut hizmetlerin
@@ -105,6 +110,9 @@ servicesRouter.post(
       select: { id: true, name: true, durationMin: true, price: true, requiresOwnSlot: true, isActive: true },
     });
 
+    // Site açılışındaki `/shop` yanıtı önbellekli; değişikliğin anında
+    // görünmesi için önbellek düşürülüyor (bkz. services/public-booking.ts).
+    publicShopInfoOnbelleginiDusur();
     res.status(201).json({ service });
   }),
 );
@@ -164,6 +172,10 @@ servicesRouter.delete(
     if (randevuSayisi === 0) {
       try {
         await prisma.service.delete({ where: { id: service.id } });
+
+        // Site açılışındaki `/shop` yanıtı önbellekli; değişikliğin anında
+        // görünmesi için önbellek düşürülüyor (bkz. services/public-booking.ts).
+        publicShopInfoOnbelleginiDusur();
         res.json({ mode: 'deleted', appointmentCount: 0 });
         return;
       } catch {
@@ -188,6 +200,9 @@ servicesRouter.delete(
       data: { isActive: false },
     });
 
+    // Site açılışındaki `/shop` yanıtı önbellekli; değişikliğin anında
+    // görünmesi için önbellek düşürülüyor (bkz. services/public-booking.ts).
+    publicShopInfoOnbelleginiDusur();
     res.json({ mode: 'hidden', appointmentCount: randevuSayisi });
   }),
 );

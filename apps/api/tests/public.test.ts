@@ -4,6 +4,7 @@ import { createApp } from '../src/app.js';
 import { createFixture, destroyFixture, testPrisma, type TestFixture } from './helpers.js';
 import { zonedTimeToUtc } from '../src/lib/time.js';
 import { FakeWhatsAppClient, setWhatsAppClient } from '../src/services/whatsapp/client.js';
+import { publicShopInfoOnbelleginiDusur } from '../src/services/public-booking.js';
 
 /**
  * Herkese açık randevu uçları — entegrasyon testleri.
@@ -458,6 +459,14 @@ describe('Berberin çalışma günleri', () => {
       data: { isWorking: false },
     });
 
+    // ⚠️ Bu test çalışma saatlerini DOĞRUDAN veritabanına yazıyor, panelin
+    // ucundan geçmiyor. `/shop` yanıtı önbellekli olduğu için o uç
+    // önbelleği düşürüyor (bkz. routes/barbers.ts); burada aynı şeyi elle
+    // yapmak gerekiyor. Yoksa test, önbelleğin bayatlığını ölçer — oysa
+    // ölçmek istediği şey `/shop` yanıtının çalışma günlerini doğru
+    // şekillendirmesi.
+    publicShopInfoOnbelleginiDusur();
+
     const res = await request(app).get(`${BASE}/shop`);
     const admin = res.body.barbers.find((b: { id: string }) => b.id === fx.adminId);
 
@@ -472,6 +481,7 @@ describe('Berberin çalışma günleri', () => {
       where: { barberId: fx.adminId, dayOfWeek: 0 },
       data: { isWorking: true },
     });
+    publicShopInfoOnbelleginiDusur();
   });
 });
 
@@ -811,5 +821,69 @@ describe('Çoklu hizmet — site', () => {
     } finally {
       await destroyFixture(yabanciDukkan.shopId);
     }
+  });
+});
+
+/**
+ * `/shop` yanıtının önbelleklenmesi.
+ *
+ * Bu bir hız değil MALİYET özelliği: siteye giren her ziyaretçi (bot dahil)
+ * bu ucu çağırıyor ve her çağrı veritabanını uyandırıyor. Ama önbellek
+ * bayatlarsa berberin fiyat değişikliği sitede görünmez — o yüzden iki şeyi
+ * birden kanıtlamak gerekiyor: önbellek TUTUYOR ve yazma işlemi onu DÜŞÜRÜYOR.
+ */
+describe('GET /shop — önbellek', () => {
+  async function adminJetonu(): Promise<string> {
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: fx.adminEmail, password: fx.password });
+    return res.body.accessToken as string;
+  }
+
+  it('hizmet fiyatı panelden değişince site ANINDA yeni fiyatı gösterir', async () => {
+    const jeton = await adminJetonu();
+
+    // Önbelleği doldur
+    const once = await request(app).get(`${BASE}/shop`).expect(200);
+    const oncekiFiyat = once.body.services.find(
+      (s: { id: string }) => s.id === fx.serviceId,
+    ).price;
+
+    await request(app)
+      .put(`/api/v1/services/${fx.serviceId}`)
+      .set({ Authorization: `Bearer ${jeton}` })
+      .send({ name: 'Test Hizmet', durationMin: 45, price: 777 })
+      .expect(200);
+
+    const sonra = await request(app).get(`${BASE}/shop`).expect(200);
+    const yeniFiyat = sonra.body.services.find(
+      (s: { id: string }) => s.id === fx.serviceId,
+    ).price;
+
+    expect(yeniFiyat).toBe(777);
+    expect(yeniFiyat).not.toBe(oncekiFiyat);
+  });
+
+  it('veritabanı DOĞRUDAN değiştiğinde önbellek eski değeri döndürebilir', async () => {
+    // Bu, önbelleğin gerçekten tuttuğunun kanıtı. Panelden geçmeyen bir
+    // değişiklikten (doğrudan SQL) haberi olmaması BEKLENEN davranış —
+    // dükkan telefonu geçmişte tam olarak böyle güncellenmişti.
+    await request(app).get(`${BASE}/shop`).expect(200);
+
+    await testPrisma.service.update({
+      where: { id: fx.serviceId },
+      data: { name: 'Doğrudan Değiştirildi' },
+    });
+
+    const res = await request(app).get(`${BASE}/shop`).expect(200);
+    const hizmet = res.body.services.find((s: { id: string }) => s.id === fx.serviceId);
+
+    expect(hizmet.name).toBe('Test Hizmet');
+
+    // Testin kendinden sonrakileri bozmaması için geri al
+    await testPrisma.service.update({
+      where: { id: fx.serviceId },
+      data: { name: 'Test Hizmet' },
+    });
   });
 });

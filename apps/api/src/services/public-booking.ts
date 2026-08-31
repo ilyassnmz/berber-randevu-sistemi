@@ -163,8 +163,78 @@ async function assertCihazSinirinaTakilmadi(params: {
   }
 }
 
+/**
+ * `/shop` yanıtının bellek içi önbelleği.
+ *
+ * ── Neden var? Bu bir hız değil, MALİYET optimizasyonu. ───────────
+ *
+ * Siteye giren HER ziyaretçi — arama motoru botları dahil — açılışta bu uca
+ * bir istek atıyor ve her istek veritabanını uyandırıyor. Yönetilen Postgres
+ * sağlayıcıları (Neon) boşta kalınca compute'u uyutuyor ve *işlem süresi*
+ * üzerinden ücretlendiriyor; yani gece gelen tek bir bot ziyareti bile
+ * veritabanını dakikalarca ayakta tutuyor.
+ *
+ * Bu yanıtın içeriği ise neredeyse hiç değişmiyor: dükkan bilgisi, hizmet
+ * listesi ve berberlerin çalıştığı günler. Değiştiğinde de bunu BİZ
+ * biliyoruz — değişiklik panelden, kendi uçlarımızdan geçiyor. Bu yüzden
+ * süre dolmasını beklemek yerine yazma işlemleri önbelleği doğrudan
+ * düşürüyor (`publicShopInfoOnbelleginiDusur`).
+ *
+ * Sonuç: berber bir fiyatı değiştirdiğinde site ANINDA gösteriyor (eski
+ * davranış korunuyor), ama boş bir gecede yüzlerce bot isteği veritabanına
+ * tek bir sorgu bile göndermiyor.
+ *
+ * ⚠️ Süre sınırı yine de var: önbellek yalnızca bu süreçte yaşıyor ve
+ * veritabanı doğrudan (panel dışından) değiştirilirse haberi olmaz —
+ * dükkan telefonu geçmişte tam olarak böyle güncellendi.
+ */
+const SHOP_INFO_TTL_MS = 60 * 60_000;
+
+/**
+ * ⚠️ Önbellek hangi dükkana ait olduğunu da tutuyor.
+ *
+ * `PUBLIC_SHOP_ID` çalışma anında okunuyor (bkz. getPublicShop). Üretimde
+ * konteyner ömrü boyunca sabit, ama testler her dosyada başka bir dükkanı
+ * işaret ediyor. Anahtar tutulmasaydı önbellek bir testten diğerine
+ * taşınır ve site YANLIŞ dükkanın hizmetlerini dönerdi — sessiz ve
+ * bulunması zor bir hata.
+ */
+let shopInfoOnbellek: { anahtar: string; deger: PublicShopInfo; sonlanmaAni: number } | null =
+  null;
+
+function onbellekAnahtari(): string {
+  return process.env.PUBLIC_SHOP_ID ?? '(tek-aktif-dukkan)';
+}
+
+type PublicShopInfo = Awaited<ReturnType<typeof buildPublicShopInfo>>;
+
+/**
+ * Önbelleği düşürür. Hizmet, berber ya da çalışma saati değiştiren her
+ * yazma ucu bunu çağırmak zorunda — çağırmayan bir uç, değişikliğin sitede
+ * bir saate kadar görünmemesine yol açar.
+ */
+export function publicShopInfoOnbelleginiDusur(): void {
+  shopInfoOnbellek = null;
+}
+
 /** Sitenin açılışta ihtiyaç duyduğu her şey: dükkan, hizmetler, berberler. */
-export async function getPublicShopInfo() {
+export async function getPublicShopInfo(): Promise<PublicShopInfo> {
+  const anahtar = onbellekAnahtari();
+
+  if (
+    shopInfoOnbellek &&
+    shopInfoOnbellek.anahtar === anahtar &&
+    shopInfoOnbellek.sonlanmaAni > Date.now()
+  ) {
+    return shopInfoOnbellek.deger;
+  }
+
+  const deger = await buildPublicShopInfo();
+  shopInfoOnbellek = { anahtar, deger, sonlanmaAni: Date.now() + SHOP_INFO_TTL_MS };
+  return deger;
+}
+
+async function buildPublicShopInfo() {
   const shop = await getPublicShop();
 
   const [services, barbers] = await Promise.all([

@@ -1,0 +1,13 @@
+# Randevu sayfaları arama motorlarına KAPALI.
+#
+# /randevu/<anahtar> adresleri müşterinin adını ve randevu bilgisini
+# gösteriyor. Adresteki anahtar tahmin edilemez, ama bir müşteri bağlantıyı
+# herkese açık bir yere yapıştırırsa tarayıcılar onu bulup indeksleyebilir —
+# o noktadan sonra bilgi aramayla ulaşılabilir hale gelir.
+#
+# /api/ ise indekslenecek bir içerik değil; taranması yalnızca veritabanını
+# boş yere uyandırır.
+User-agent: *
+Disallow: /randevu/
+Disallow: /api/
+Allow: /
