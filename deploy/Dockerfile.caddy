@@ -31,6 +31,16 @@ COPY packages/shared packages/shared
 COPY apps/panel apps/panel
 COPY apps/web apps/web
 
+# Dükkan telefonu derleme zamanında gömülüyor.
+#
+# ⚠️ Vite'ın `import.meta.env` değerleri derleme sırasında sabitleniyor;
+# konteynere sonradan verilen bir ortam değişkeni okunmaz. Bu numara
+# YALNIZCA "sunucuya ulaşılamıyor" hata ekranında kullanılıyor — normal
+# akışta numara API'den geliyor. Boş bırakılırsa o ekranda telefon
+# gösterilmez, başka hiçbir şey değişmez.
+ARG VITE_CONTACT_PHONE=
+ENV VITE_CONTACT_PHONE=$VITE_CONTACT_PHONE
+
 # shared ÖNCE: diğer ikisi ona bağımlı.
 RUN npm run build --workspace=@berber/shared \
     && npm run build --workspace=@berber/panel \

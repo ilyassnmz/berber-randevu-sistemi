@@ -209,6 +209,21 @@ export default function BookingPage() {
   }
 
   if (shopQuery.isError || !info) {
+    /**
+     * ⚠️ Telefon numarası BURADA sunucudan gelemez.
+     *
+     * Normalde dükkan telefonu `/shop` yanıtından okunuyor — ama bu ekran
+     * tam da o istek başarısız olduğunda görünüyor. Bir dönem bu yüzden
+     * müşteriye yalnızca "ulaşılamıyor" yazısı gösteriliyordu: randevu da
+     * alamıyor, arayacak numarayı da göremiyordu. 31 Ağustos 2026'daki
+     * veritabanı kesintisinde gerçekten yaşandı.
+     *
+     * Bu yüzden numara derleme zamanında gömülüyor. Yılda bir değişen bir
+     * bilgi; kesinti anında elde kalan tek iletişim yolu olması, sunucudan
+     * okunuyor olmasından daha değerli.
+     */
+    const acilTelefon = import.meta.env.VITE_CONTACT_PHONE ?? null;
+
     return (
       <div className="page">
         <div className="state-message">
@@ -216,9 +231,17 @@ export default function BookingPage() {
           <span>
             Randevu sistemine şu anda ulaşılamıyor.
             <br />
-            Lütfen birazdan tekrar deneyin.
+            {acilTelefon
+              ? 'Birazdan tekrar deneyebilir ya da bizi arayabilirsiniz.'
+              : 'Lütfen birazdan tekrar deneyin.'}
           </span>
         </div>
+
+        {acilTelefon && (
+          <a href={`tel:${acilTelefon}`} className="btn btn-primary btn-block">
+            <Phone size={17} aria-hidden /> Bizi arayın
+          </a>
+        )}
       </div>
     );
   }
