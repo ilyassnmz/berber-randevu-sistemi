@@ -17,6 +17,7 @@ import {
   createBarber,
   updateBarber,
   listAllBarbers,
+  deleteBarber,
 } from '../services/barbers.js';
 import { publicShopInfoOnbelleginiDusur } from '../services/public-booking.js';
 
@@ -72,6 +73,24 @@ barbersRouter.put(
     // Ad ve aktiflik sitedeki berber listesini etkiliyor.
     publicShopInfoOnbelleginiDusur();
     res.json({ barber });
+  }),
+);
+
+/**
+ * Berberi kaldırır — yalnızca admin.
+ *
+ * Hiç randevusu yoksa gerçekten siler, varsa yalnızca kapatır. Hangisinin
+ * olduğunu `mode` ile söylüyor ki panel kullanıcıya doğru şeyi anlatabilsin
+ * ("silindi" deyip aslında gizlemek kafa karıştırırdı).
+ */
+barbersRouter.delete(
+  '/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const sonuc = await deleteBarber(req.auth!.shopId, req.params.id!, req.auth!);
+
+    publicShopInfoOnbelleginiDusur();
+    res.json(sonuc);
   }),
 );
 

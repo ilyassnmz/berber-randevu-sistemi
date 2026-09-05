@@ -1,22 +1,30 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Power, PowerOff } from 'lucide-react';
-import { fetchAllBarbers, updateBarber } from '../lib/endpoints';
+import { Check, Power, PowerOff, Trash2 } from 'lucide-react';
+import { fetchAllBarbers, updateBarber, deleteBarber } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
 import { useAuthStore } from '../lib/authStore';
 import type { BarberAdmin, BarberRole } from '../lib/types';
 
 /**
- * Berber düzenleme ve kapatma (yalnızca admin).
+ * Berber düzenleme, kapatma ve kaldırma (yalnızca admin).
  *
- * ⚠️ Berber SİLİNMİYOR, kapatılıyor. Geçmiş randevular hangi berbere ait
- * olduğunu kaybetmemeli; veritabanı da randevusu olan bir berberin
- * silinmesine zaten izin vermiyor.
+ * ── İki ayrı düğme, iki ayrı niyet ───────────────────────────────
  *
- * Kapatma kuralları sunucuda (services/barbers.ts): son yönetici
- * kapatılamaz, kendi hesabını kapatamazsın ve gelecek randevusu olan berber
- * kapatılamaz. Bu ekran o hataları olduğu gibi gösteriyor — kuralları
- * burada tekrarlamak, iki tarafın zamanla ayrışması demek olurdu.
+ *   ⏻ Kapat/aç — berber şu an çalışmıyor (uzun izin, ayrılık). Kaydı durur,
+ *     geri açılabilir.
+ *   🗑 Kaldır  — bu kayıt hiç olmamalıydı (yanlış eklenmiş, deneme). Hiç
+ *     randevusu yoksa GERÇEKTEN silinir; varsa sunucu kapatmaya düşer ve
+ *     hangisini yaptığını söyler.
+ *
+ * İkincisi sonradan eklendi: ilk sürümde her berber yalnızca "kapatılıyordu",
+ * dolayısıyla deneme amaçlı açılan bir kayıt yönetim listesinden hiç
+ * kaybolmuyordu ve kullanıcı haklı olarak "silemiyorum" dedi.
+ *
+ * Kurallar sunucuda (services/barbers.ts): son yönetici kaldırılamaz, kendi
+ * hesabını kaldıramazsın, gelecek randevusu olan berber ne kapatılır ne
+ * silinir. Bu ekran o hataları olduğu gibi gösteriyor — kuralları burada
+ * tekrarlamak, iki tarafın zamanla ayrışması demek olurdu.
  */
 interface BarberDraft {
   name: string;
@@ -31,6 +39,8 @@ export function BarbersEditor() {
   const [savedId, setSavedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [kapatilacak, setKapatilacak] = useState<string | null>(null);
+  const [silinecek, setSilinecek] = useState<string | null>(null);
+  const [bilgi, setBilgi] = useState<string | null>(null);
 
   const query = useQuery({ queryKey: ['barbers', 'all'], queryFn: fetchAllBarbers });
   const barbers = query.data?.barbers ?? [];
@@ -63,6 +73,28 @@ export function BarbersEditor() {
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : 'Kaydedilemedi');
+    },
+  });
+
+  const silMutation = useMutation({
+    mutationFn: (id: string) => deleteBarber(id),
+    onSuccess: (sonuc) => {
+      setSilinecek(null);
+      // Kullanıcıya NE olduğunu söylüyoruz: silindi mi, kapatıldı mı?
+      // "Sildim" deyip aslında kapatmak, berber listede durmaya devam
+      // edince kafa karıştırırdı — zaten bu ekranın düzeltmeye çalıştığı
+      // sorun tam olarak buydu.
+      setBilgi(
+        sonuc.mode === 'deleted'
+          ? 'Berber silindi.'
+          : `Berber kapatıldı. ${sonuc.appointmentCount} randevuda kaydı olduğu için ` +
+            'tamamen silinemez; geçmiş randevularda adı görünmeye devam eder.',
+      );
+      setTimeout(() => setBilgi(null), 6000);
+      void queryClient.invalidateQueries({ queryKey: ['barbers'] });
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Berber kaldırılamadı');
     },
   });
 
@@ -144,6 +176,49 @@ export function BarbersEditor() {
               {b.isActive ? <PowerOff size={16} aria-hidden /> : <Power size={16} aria-hidden />}
             </button>
 
+            <button
+              type="button"
+              className="btn-icon service-row-delete"
+              aria-label={`${b.name} kaydını kaldır`}
+              title="Kaydı kaldır"
+              disabled={silMutation.isPending}
+              onClick={() => {
+                setError(null);
+                setKapatilacak(null);
+                setSilinecek(silinecek === b.id ? null : b.id);
+              }}
+            >
+              <Trash2 size={16} aria-hidden />
+            </button>
+
+            {silinecek === b.id && (
+              <div className="service-confirm">
+                <span>
+                  <strong>{b.name}</strong> kaydı kaldırılsın mı? Hiç randevusu
+                  yoksa tamamen silinir; randevusu varsa yalnızca kapatılır ve
+                  geçmiş randevularda adı görünmeye devam eder.
+                </span>
+                <div className="service-confirm-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setSilinecek(null)}
+                    disabled={silMutation.isPending}
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => silMutation.mutate(b.id)}
+                    disabled={silMutation.isPending}
+                  >
+                    {silMutation.isPending ? <span className="spinner" /> : 'Evet, kaldır'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {kapatilacak === b.id && (
               <div className="service-confirm">
                 <span>
@@ -174,6 +249,12 @@ export function BarbersEditor() {
           </div>
         );
       })}
+
+      {bilgi && (
+        <div className="notice notice-info service-notice" role="status">
+          {bilgi}
+        </div>
+      )}
 
       {error && (
         <div className="form-error" role="alert" style={{ marginTop: 12 }}>

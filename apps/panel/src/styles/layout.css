@@ -1334,7 +1334,7 @@ svg {
    rozetleri için üstte tam genişlikte bir başlık satırı olması. */
 .barber-row {
   display: grid;
-  grid-template-columns: 1fr 130px auto auto;
+  grid-template-columns: 1fr 130px auto auto auto;
   align-items: end;
   gap: 8px;
   padding: 12px 0;
@@ -1402,4 +1402,9 @@ svg {
   .barber-row-name {
     grid-column: 1 / -1;
   }
+}
+
+/* Berber satırındaki onay kutusu da tam genişlik kaplasın. */
+.barber-row .service-confirm {
+  grid-column: 1 / -1;
 }

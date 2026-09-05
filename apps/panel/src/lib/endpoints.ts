@@ -188,6 +188,19 @@ export function fetchAllBarbers() {
   return apiRequest<{ barbers: BarberAdmin[] }>('/barbers/all');
 }
 
+/**
+ * Berberi kaldırır (yalnızca admin).
+ *
+ * `mode` sunucudan geliyor: hiç randevusu olmayan berber gerçekten silinir
+ * ('deleted'), randevusu olan yalnızca kapatılır ('hidden') — geçmiş
+ * randevunun kime ait olduğu okunabilir kalsın diye.
+ */
+export function deleteBarber(id: string) {
+  return apiRequest<{ mode: 'deleted' | 'hidden'; appointmentCount: number }>(`/barbers/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 /** Berberin adını, rolünü ve aktifliğini günceller (yalnızca admin). */
 export function updateBarber(
   id: string,
