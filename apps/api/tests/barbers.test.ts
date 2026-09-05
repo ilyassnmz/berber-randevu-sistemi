@@ -390,13 +390,13 @@ describe('PUT /barbers/:id — düzenleme ve kapatma', () => {
 });
 
 /**
- * Berber kaldırma.
+ * Berber silme.
  *
- * Hizmet kaldırmadaki ayrımın aynısı: hiç kullanılmamış kayıt gerçekten
- * silinir, kullanılmış olan yalnızca kapatılır. İlk sürümde bu ayrım yoktu
- * ve deneme amaçlı eklenen bir berber yönetim listesinden hiç kaybolmuyordu.
+ * ⚠️ Silme, berberin TÜM randevularını da götürüyor — sistemdeki tek geri
+ * alınamaz işlem. Bu blok iki şeyi birden kanıtlıyor: gerçekten siliyor ve
+ * sisteme erişimi kilitleyecek iki durumu reddediyor.
  */
-describe('DELETE /barbers/:id — kaldırma', () => {
+describe('DELETE /barbers/:id — kalıcı silme', () => {
   async function berberEkle(ad: string) {
     const res = await request(app)
       .post(BASE)
@@ -411,99 +411,91 @@ describe('DELETE /barbers/:id — kaldırma', () => {
     return res.body.barber.id as string;
   }
 
-  it('hiç randevusu olmayan berber GERÇEKTEN silinir', async () => {
+  async function randevuEkle(barberId: string, gunFarki: number, durum: 'confirmed' | 'completed') {
+    const an = new Date();
+    an.setUTCDate(an.getUTCDate() + gunFarki);
+    an.setUTCHours(9, 0, 0, 0);
+
+    return testPrisma.appointment.create({
+      data: {
+        shopId: fx.shopId,
+        barberId,
+        customerId: fx.customerId,
+        serviceId: fx.serviceId,
+        startsAt: an,
+        endsAt: new Date(an.getTime() + 45 * 60_000),
+        status: durum,
+        source: 'panel',
+      },
+    });
+  }
+
+  it('randevusu olmayan berber silinir', async () => {
     const id = await berberEkle('Silinecek Berber');
 
     const res = await request(app).delete(`${BASE}/${id}`).set(auth(adminToken));
 
     expect(res.status).toBe(200);
-    expect(res.body.mode).toBe('deleted');
+    expect(res.body.appointmentCount).toBe(0);
+    expect(await testPrisma.barber.findUnique({ where: { id } })).toBeNull();
 
-    // Kayıt gerçekten gitmiş olmalı — "kapatıldı" değil
-    const kayit = await testPrisma.barber.findUnique({ where: { id } });
-    expect(kayit).toBeNull();
-
-    // Çalışma saatleri de birlikte silinmiş olmalı (şemada Cascade)
-    const saatler = await testPrisma.workingHours.findMany({ where: { barberId: id } });
-    expect(saatler).toHaveLength(0);
+    // Çalışma saatleri de birlikte gitmeli (şemada Cascade)
+    expect(await testPrisma.workingHours.findMany({ where: { barberId: id } })).toHaveLength(0);
   });
 
-  it('GEÇMİŞ randevusu olan berber silinmez, kapatılır', async () => {
-    const id = await berberEkle('Geçmişi Olan');
-
-    const gecmis = new Date();
-    gecmis.setUTCDate(gecmis.getUTCDate() - 10);
-    gecmis.setUTCHours(9, 0, 0, 0);
-
-    await testPrisma.appointment.create({
-      data: {
-        shopId: fx.shopId,
-        barberId: id,
-        customerId: fx.customerId,
-        serviceId: fx.serviceId,
-        startsAt: gecmis,
-        endsAt: new Date(gecmis.getTime() + 45 * 60_000),
-        status: 'completed',
-        source: 'panel',
-      },
-    });
+  it('GEÇMİŞ ve GELECEK randevuları olan berber, randevularıyla birlikte silinir', async () => {
+    const id = await berberEkle('Randevulu Berber');
+    await randevuEkle(id, -10, 'completed');
+    await randevuEkle(id, 5, 'confirmed');
 
     const res = await request(app).delete(`${BASE}/${id}`).set(auth(adminToken));
 
     expect(res.status).toBe(200);
-    expect(res.body.mode).toBe('hidden');
-    expect(res.body.appointmentCount).toBe(1);
+    expect(res.body.appointmentCount).toBe(2);
 
-    const kayit = await testPrisma.barber.findUnique({ where: { id } });
-    expect(kayit?.isActive).toBe(false);
-
-    await testPrisma.appointment.deleteMany({ where: { barberId: id } });
-    await testPrisma.workingHours.deleteMany({ where: { barberId: id } });
-    await testPrisma.barber.delete({ where: { id } });
+    // Berber de randevuları da gitmiş olmalı
+    expect(await testPrisma.barber.findUnique({ where: { id } })).toBeNull();
+    expect(await testPrisma.appointment.count({ where: { barberId: id } })).toBe(0);
   });
 
-  it('GELECEK randevusu olan berber kaldırılamaz', async () => {
-    const id = await berberEkle('Geleceği Olan');
+  it('silme denetim kaydına yazılıyor', async () => {
+    // Randevular kayboluyor; sonradan "nereye gitti?" sorusunun
+    // cevaplanabildiği tek yer denetim kaydı.
+    const id = await berberEkle('İzi Kalacak');
+    await randevuEkle(id, -3, 'completed');
 
-    const gelecek = new Date();
-    gelecek.setUTCDate(gelecek.getUTCDate() + 5);
-    gelecek.setUTCHours(9, 0, 0, 0);
+    await request(app).delete(`${BASE}/${id}`).set(auth(adminToken)).expect(200);
 
-    const randevu = await testPrisma.appointment.create({
-      data: {
-        shopId: fx.shopId,
-        barberId: id,
-        customerId: fx.customerId,
-        serviceId: fx.serviceId,
-        startsAt: gelecek,
-        endsAt: new Date(gelecek.getTime() + 45 * 60_000),
-        status: 'confirmed',
-        source: 'panel',
-      },
+    const kayit = await testPrisma.auditLog.findFirst({
+      where: { shopId: fx.shopId, action: 'barber.delete', entityId: id },
     });
 
-    const res = await request(app).delete(`${BASE}/${id}`).set(auth(adminToken));
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.message).toMatch(/gelecek randevu/i);
-
-    // Ne silinmiş ne kapatılmış olmalı
-    const kayit = await testPrisma.barber.findUnique({ where: { id } });
-    expect(kayit?.isActive).toBe(true);
-
-    await testPrisma.appointment.delete({ where: { id: randevu.id } });
-    await testPrisma.workingHours.deleteMany({ where: { barberId: id } });
-    await testPrisma.barber.delete({ where: { id } });
+    expect(kayit).not.toBeNull();
+    expect((kayit?.metadata as { appointmentCount?: number })?.appointmentCount).toBe(1);
   });
 
-  it('admin kendi kaydını kaldıramaz', async () => {
+  it('yönetim listesi silme onayı için randevu sayılarını döndürür', async () => {
+    const id = await berberEkle('Sayımlı Berber');
+    await randevuEkle(id, -4, 'completed');
+    await randevuEkle(id, 6, 'confirmed');
+
+    const res = await request(app).get(`${BASE}/all`).set(auth(adminToken)).expect(200);
+    const satir = res.body.barbers.find((b: { id: string }) => b.id === id);
+
+    expect(satir.appointmentCount).toBe(2);
+    expect(satir.futureAppointmentCount).toBe(1);
+
+    await request(app).delete(`${BASE}/${id}`).set(auth(adminToken)).expect(200);
+  });
+
+  it('admin kendi kaydını silemez', async () => {
     const res = await request(app).delete(`${BASE}/${fx.adminId}`).set(auth(adminToken));
 
     expect(res.status).toBe(400);
     expect(res.body.error.message).toMatch(/kendi hesabınızı/i);
   });
 
-  it('staff berber kaldıramaz', async () => {
+  it('staff berber silemez', async () => {
     const res = await request(app).delete(`${BASE}/${fx.staffId}`).set(auth(staffToken));
     expect(res.status).toBe(403);
   });

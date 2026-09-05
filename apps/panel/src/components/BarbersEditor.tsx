@@ -13,18 +13,14 @@ import type { BarberAdmin, BarberRole } from '../lib/types';
  *
  *   ⏻ Kapat/aç — berber şu an çalışmıyor (uzun izin, ayrılık). Kaydı durur,
  *     geri açılabilir.
- *   🗑 Kaldır  — bu kayıt hiç olmamalıydı (yanlış eklenmiş, deneme). Hiç
- *     randevusu yoksa GERÇEKTEN silinir; varsa sunucu kapatmaya düşer ve
- *     hangisini yaptığını söyler.
+ *   🗑 Sil     — kayıt tamamen gitsin. Berberin TÜM randevuları da silinir
+ *     (veritabanı randevusu olan berberi silmiyor, başka yolu yok) ve işlem
+ *     geri alınamaz. Onay metni kaç randevunun gideceğini yazıyor.
  *
- * İkincisi sonradan eklendi: ilk sürümde her berber yalnızca "kapatılıyordu",
- * dolayısıyla deneme amaçlı açılan bir kayıt yönetim listesinden hiç
- * kaybolmuyordu ve kullanıcı haklı olarak "silemiyorum" dedi.
- *
- * Kurallar sunucuda (services/barbers.ts): son yönetici kaldırılamaz, kendi
- * hesabını kaldıramazsın, gelecek randevusu olan berber ne kapatılır ne
- * silinir. Bu ekran o hataları olduğu gibi gösteriyor — kuralları burada
- * tekrarlamak, iki tarafın zamanla ayrışması demek olurdu.
+ * Kurallar sunucuda (services/barbers.ts): kendi hesabını ve son yöneticiyi
+ * silemezsin — bu ikisi veri değil, sisteme erişim koruması. Bu ekran o
+ * hataları olduğu gibi gösteriyor; kuralları burada tekrarlamak iki tarafın
+ * zamanla ayrışması demek olurdu.
  */
 interface BarberDraft {
   name: string;
@@ -85,10 +81,9 @@ export function BarbersEditor() {
       // edince kafa karıştırırdı — zaten bu ekranın düzeltmeye çalıştığı
       // sorun tam olarak buydu.
       setBilgi(
-        sonuc.mode === 'deleted'
-          ? 'Berber silindi.'
-          : `Berber kapatıldı. ${sonuc.appointmentCount} randevuda kaydı olduğu için ` +
-            'tamamen silinemez; geçmiş randevularda adı görünmeye devam eder.',
+        sonuc.appointmentCount > 0
+          ? `Berber ve ${sonuc.appointmentCount} randevusu kalıcı olarak silindi.`
+          : 'Berber silindi.',
       );
       setTimeout(() => setBilgi(null), 6000);
       void queryClient.invalidateQueries({ queryKey: ['barbers'] });
@@ -179,8 +174,8 @@ export function BarbersEditor() {
             <button
               type="button"
               className="btn-icon service-row-delete"
-              aria-label={`${b.name} kaydını kaldır`}
-              title="Kaydı kaldır"
+              aria-label={`${b.name} kaydını kalıcı olarak sil`}
+              title="Kalıcı olarak sil"
               disabled={silMutation.isPending}
               onClick={() => {
                 setError(null);
@@ -193,10 +188,28 @@ export function BarbersEditor() {
 
             {silinecek === b.id && (
               <div className="service-confirm">
+                {/*
+                  Onay metni sayıları GÖSTERİYOR. Silme geri alınamaz ve
+                  randevuları da götürüyor; yönetici kaç kaydın gideceğini
+                  görmeden karar vermemeli.
+                */}
                 <span>
-                  <strong>{b.name}</strong> kaydı kaldırılsın mı? Hiç randevusu
-                  yoksa tamamen silinir; randevusu varsa yalnızca kapatılır ve
-                  geçmiş randevularda adı görünmeye devam eder.
+                  <strong>{b.name}</strong> kalıcı olarak silinsin mi?
+                  {b.appointmentCount > 0 && (
+                    <>
+                      {' '}
+                      <strong>{b.appointmentCount} randevusu da silinecek</strong>
+                      {b.futureAppointmentCount > 0 && (
+                        <>
+                          {' '}— bunların <strong>{b.futureAppointmentCount} tanesi gelecek
+                          tarihli</strong>, o müşteriler dükkana geldiğinde sistemde hiçbir
+                          kayıt olmayacak
+                        </>
+                      )}
+                      .
+                    </>
+                  )}{' '}
+                  Bu işlem geri alınamaz.
                 </span>
                 <div className="service-confirm-actions">
                   <button
@@ -213,7 +226,7 @@ export function BarbersEditor() {
                     onClick={() => silMutation.mutate(b.id)}
                     disabled={silMutation.isPending}
                   >
-                    {silMutation.isPending ? <span className="spinner" /> : 'Evet, kaldır'}
+                    {silMutation.isPending ? <span className="spinner" /> : 'Evet, kalıcı olarak sil'}
                   </button>
                 </div>
               </div>

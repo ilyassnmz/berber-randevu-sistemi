@@ -4,6 +4,7 @@ import { prisma } from '../db/client.js';
 import { NotFoundError, ValidationError, ForbiddenError } from '../lib/errors.js';
 import { assertCanAccessBarber, type AuthContext } from '../middleware/auth.js';
 import { logger } from '../lib/logger.js';
+import { recordAudit, AUDIT_ACTIONS } from './audit.js';
 
 /**
  * Berber yönetimi: çalışma saatleri, izin günleri, yeni berber ekleme.
@@ -257,43 +258,88 @@ export async function updateBarber(
  * bir berber geri açılamaz, listeden tamamen kaybolur.
  */
 export async function listAllBarbers(shopId: string) {
-  return prisma.barber.findMany({
-    where: { shopId },
-    select: { id: true, name: true, email: true, role: true, isActive: true },
-    orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
-  });
+  /**
+   * Randevu sayıları da dönüyor — silme onayı için ZORUNLU.
+   *
+   * Berber silmek randevularını da siliyor (bkz. deleteBarber). Yönetici bu
+   * kararı, kaç randevunun gideceğini görmeden veremez; "5 randevu da
+   * silinecek, 2'si gelecek tarihli" bilgisi onay ekranında yazıyor.
+   *
+   * Sayımlar tek sorguda toplanıyor, berber başına ayrı sorgu atılmıyor.
+   */
+  const [barbers, gelecekSayimlari] = await Promise.all([
+    prisma.barber.findMany({
+      where: { shopId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        _count: { select: { appointments: true } },
+      },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    }),
+    prisma.appointment.groupBy({
+      by: ['barberId'],
+      where: {
+        shopId,
+        startsAt: { gte: new Date() },
+        status: { in: ['pending_confirm', 'confirmed'] },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const gelecekById = new Map(gelecekSayimlari.map((g) => [g.barberId, g._count._all]));
+
+  return barbers.map(({ _count, ...b }) => ({
+    ...b,
+    appointmentCount: _count.appointments,
+    futureAppointmentCount: gelecekById.get(b.id) ?? 0,
+  }));
 }
 
 /**
- * Berberi kaldırır — yalnızca admin.
+ * Berberi ve TÜM randevularını kalıcı olarak siler — yalnızca admin.
  *
- * ── İki farklı kaldırma ──────────────────────────────────────────
+ * ⚠️ Sistemdeki tek gerçekten YIKICI işlem. Geri alınamaz.
  *
- * Hizmet kaldırmadaki (routes/services.ts) ayrımın aynısı, aynı gerekçeyle:
+ * ── Neden randevular da siliniyor? ───────────────────────────────
  *
- *   * HİÇ randevusu olmayan berber GERÇEKTEN silinir. Yanlış eklenmiş ya da
- *     deneme amaçlı açılmış bir kayıt listede iz bırakmamalı. Bu, ilk
- *     sürümde atlanmıştı: her berber "pasife alınıyor", dolayısıyla silinen
- *     deneme kaydı yönetim listesinde sonsuza kadar duruyordu.
+ * `appointments.barber_id` üzerinde `onDelete: Restrict` var: veritabanı,
+ * randevusu olan bir berberi silmeyi reddediyor. Dolayısıyla "berberi
+ * tamamen sil" istemek, kaçınılmaz olarak "randevularını da sil" demek —
+ * üçüncü bir seçenek yok (randevuyu başka berbere devretmek geçmişi
+ * çarpıtırdı, `barber_id`'yi boş bırakmak ise şema gereği mümkün değil).
  *
- *   * Randevusu OLAN berber silinmez, pasife alınır. Veritabanı kısıtı
- *     (`onDelete: Restrict`) zaten engelliyor ve engellemesi de doğru:
- *     geçmiş randevunun kime ait olduğu okunabilir kalmalı.
+ * İlk sürüm bu yüzden randevusu olan berberi silmeyip kapatıyordu. Kullanıcı
+ * bunun aksini istedi: deneme ve ayrılan berber kayıtları listede kalmasın.
+ * Karar bilinçli olarak kullanıcıya bırakıldı; buradaki sorumluluk, kararı
+ * BİLGİLİ hale getirmek:
  *
- * Çalışma saatleri, izinler, oturum jetonları ve bildirim abonelikleri
- * berberle birlikte kendiliğinden siliniyor (şemada Cascade); denetim
- * kayıtları ise duruyor, yalnızca aktör alanı boşalıyor (SetNull).
+ *   * `listAllBarbers` her berberin randevu sayısını (ve kaçının gelecekte
+ *     olduğunu) döndürüyor, panel onay ekranında bunu gösteriyor.
+ *   * Silme, olan biteni denetim kaydına yazıyor — sonradan "bu randevular
+ *     nereye gitti?" sorusunun cevaplanabildiği tek yer orası.
+ *
+ * ── Korunan iki kural ────────────────────────────────────────────
+ *
+ * Bu ikisi veri değil, SİSTEME ERİŞİM koruması; kaldırılırsa dükkan
+ * yönetilemez hale gelir:
+ *   1. Kendi hesabını silemezsin.
+ *   2. Son aktif yöneticiyi silemezsin.
  */
 export async function deleteBarber(
   shopId: string,
   barberId: string,
   auth: AuthContext,
-): Promise<{ mode: 'deleted' | 'hidden'; appointmentCount: number }> {
+): Promise<{ appointmentCount: number }> {
   const barber = await prisma.barber.findFirst({ where: { id: barberId, shopId } });
   if (!barber) throw new NotFoundError('Berber bulunamadı');
 
   if (barberId === auth.barberId) {
-    throw new ValidationError('Kendi hesabınızı kaldıramazsınız.');
+    throw new ValidationError('Kendi hesabınızı silemezsiniz.');
   }
 
   if (barber.role === 'admin' && barber.isActive) {
@@ -302,45 +348,34 @@ export async function deleteBarber(
     });
     if (digerAktifAdmin === 0) {
       throw new ValidationError(
-        'Dükkandaki son yöneticiyi kaldıramazsınız. ' +
+        'Dükkandaki son yöneticiyi silemezsiniz. ' +
           'Önce başka bir berbere yönetici yetkisi verin.',
       );
     }
   }
 
-  // ⚠️ GELECEK randevusu olan berber ne silinir ne kapatılır.
-  //
-  // Kapatılsa sekmesi panelden kaybolur ve o randevular görünmez hale gelir
-  // (bkz. updateBarber). Aynı tuzak burada da geçerli.
-  const gelecekRandevu = await prisma.appointment.count({
-    where: {
-      barberId,
-      startsAt: { gte: new Date() },
-      status: { in: ['pending_confirm', 'confirmed'] },
-    },
-  });
-
-  if (gelecekRandevu > 0) {
-    throw new ValidationError(
-      `${barber.name} için ${gelecekRandevu} adet gelecek randevu var. ` +
-        'Kaldırmadan önce bu randevuları iptal edin ya da başka bir berbere ' +
-        'taşıyın — aksi halde panelde görünmez hale gelirler.',
-    );
-  }
-
   const randevuSayisi = await prisma.appointment.count({ where: { barberId } });
 
-  if (randevuSayisi === 0) {
-    try {
-      await prisma.barber.delete({ where: { id: barberId } });
-      return { mode: 'deleted', appointmentCount: 0 };
-    } catch {
-      // ⚠️ Sayım ile silme ARASINDA randevu alınmış olabilir. Veritabanı bu
-      // durumda silmeyi reddeder; doğru davranış belli, pasife almak.
-      logger.warn({ barberId }, 'Berber silinirken araya randevu girdi — kapatmaya düşülüyor');
-    }
-  }
+  // ⚠️ Tek işlem (transaction): randevular silinip berber silinemezse ortada
+  // randevusuz bir berber, tersi olursa yetim randevular kalırdı.
+  await prisma.$transaction([
+    prisma.appointment.deleteMany({ where: { barberId } }),
+    prisma.barber.delete({ where: { id: barberId } }),
+  ]);
 
-  await prisma.barber.update({ where: { id: barberId }, data: { isActive: false } });
-  return { mode: 'hidden', appointmentCount: randevuSayisi };
+  await recordAudit({
+    shopId,
+    actorId: auth.barberId,
+    action: AUDIT_ACTIONS.BARBER_DELETE,
+    entityType: 'barber',
+    entityId: barberId,
+    metadata: { name: barber.name, email: barber.email, appointmentCount: randevuSayisi },
+  });
+
+  logger.warn(
+    { barberId, name: barber.name, randevuSayisi },
+    'Berber ve tüm randevuları kalıcı olarak silindi',
+  );
+
+  return { appointmentCount: randevuSayisi };
 }

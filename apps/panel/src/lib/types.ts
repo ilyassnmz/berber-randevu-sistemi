@@ -29,6 +29,15 @@ export interface BarberAdmin {
   email: string;
   role: BarberRole;
   isActive: boolean;
+  /**
+   * Bu berbere ait TOPLAM randevu sayısı.
+   *
+   * Silme onayında gösteriliyor: berberi silmek randevularını da siliyor ve
+   * yönetici bu kararı kaç kaydın gideceğini görmeden vermemeli.
+   */
+  appointmentCount: number;
+  /** Bunların kaçı gelecek tarihli — silinirse müşteri boşa gelir. */
+  futureAppointmentCount: number;
 }
 
 export interface AuthBarber {

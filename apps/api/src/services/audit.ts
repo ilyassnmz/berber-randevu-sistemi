@@ -19,6 +19,15 @@ export const AUDIT_ACTIONS = {
   APPOINTMENT_RESCHEDULE: 'appointment.reschedule',
   CUSTOMER_BLACKLIST: 'customer.blacklist',
   CUSTOMER_UNBLACKLIST: 'customer.unblacklist',
+  /**
+   * Berber ve TÜM randevuları silindi.
+   *
+   * Sistemdeki tek gerçekten yıkıcı işlem: geri alınamıyor ve geçmiş
+   * randevuları da götürüyor. Denetim kaydı, sonradan "bu randevular nereye
+   * gitti?" sorusunun cevaplanabildiği tek yer — metadata'da berberin adı ve
+   * silinen randevu sayısı tutuluyor.
+   */
+  BARBER_DELETE: 'barber.delete',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
