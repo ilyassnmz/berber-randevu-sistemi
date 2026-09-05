@@ -1,5 +1,4 @@
 import { hash as hashPassword } from '@node-rs/argon2';
-import { randomBytes } from 'node:crypto';
 import type { WorkingHoursInput } from '@berber/shared';
 import { prisma } from '../db/client.js';
 import { NotFoundError, ValidationError, ForbiddenError } from '../lib/errors.js';
@@ -103,14 +102,8 @@ export async function deleteTimeOff(shopId: string, timeOffId: string, auth: Aut
 
 // ─── Yeni berber ekleme ─────────────────────────────────
 
-function generatePassword(): string {
-  return randomBytes(18).toString('base64url');
-}
-
 export interface CreateBarberResult {
   barber: { id: string; name: string; email: string; role: string };
-  /** Yalnızca burada, bir kez döner — sonra bir daha gösterilemez (argon2id geri alınamaz). */
-  password: string;
 }
 
 /**
@@ -118,13 +111,23 @@ export interface CreateBarberResult {
  * ile zaten kısıtlı, burada TEKRAR kontrol edilmiyor çünkü hedef bir "barberId"
  * değil — assertCanAccessBarber'ın koruduğu şey bu değil, ayrı bir yetki sınıfı).
  *
- * seed.ts'teki şifre üretim mantığıyla birebir aynı: rastgele, okunabilir,
- * bir kez gösterilir.
+ * ⚠️ Şifreyi YÖNETİCİ veriyor; burada rastgele şifre ÜRETİLMİYOR.
+ *
+ * Eskiden üretiliyor ve panelde bir kez gösteriliyordu. Güvenlik açısından
+ * doğruydu ama kullanımda çöktü: yönetici o ekranı kapatınca şifre kayboluyor
+ * ve geri getirmenin hiçbir yolu kalmıyordu (argon2id geri döndürülemez,
+ * panelde de sıfırlama yoktu). Canlıda tam olarak bu yaşandı — eklenen berber
+ * panele hiç giremedi.
+ *
+ * Şifreyi yöneticinin belirlemesi sırrı ortadan kaldırıyor: kaybolacak bir şey
+ * yok, çünkü şifreyi zaten o seçti ve berbere kendisi söylüyor. Ham şifre yine
+ * hiçbir yerde saklanmıyor, yalnızca argon2id özeti yazılıyor.
  */
 export async function createBarber(
   shopId: string,
   name: string,
   email: string,
+  password: string,
   role: 'admin' | 'staff',
 ): Promise<CreateBarberResult> {
   const existing = await prisma.barber.findUnique({
@@ -132,7 +135,6 @@ export async function createBarber(
   });
   if (existing) throw new ValidationError('Bu e-posta ile kayıtlı bir berber zaten var');
 
-  const password = generatePassword();
   const passwordHash = await hashPassword(password, ARGON2_OPTIONS);
 
   const barber = await prisma.barber.create({
@@ -154,7 +156,6 @@ export async function createBarber(
 
   return {
     barber: { id: barber.id, name: barber.name, email: barber.email, role: barber.role },
-    password,
   };
 }
 

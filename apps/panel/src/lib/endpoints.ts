@@ -160,8 +160,19 @@ export function deleteTimeOff(timeOffId: string) {
   return apiRequest<void>(`/barbers/time-off/${timeOffId}`, { method: 'DELETE' });
 }
 
-export function createBarber(input: { name: string; email: string; role: BarberRole }) {
-  return apiRequest<{ barber: Barber & { email: string }; password: string }>('/barbers', {
+/**
+ * Yeni berber ekler (yalnızca admin).
+ *
+ * Şifreyi yönetici belirliyor; yanıt şifreyi GERİ DÖNDÜRMÜYOR — zaten
+ * gönderen taraf biliyor ve ağda ikinci kez dolaşmasına gerek yok.
+ */
+export function createBarber(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: BarberRole;
+}) {
+  return apiRequest<{ barber: Barber & { email: string } }>('/barbers', {
     method: 'POST',
     body: input,
   });

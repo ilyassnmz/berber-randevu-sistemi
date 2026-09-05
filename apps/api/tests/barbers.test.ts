@@ -159,38 +159,72 @@ describe('İzin günleri', () => {
 });
 
 describe('POST /barbers — yeni berber ekleme', () => {
-  it('admin yeni berber ekleyebilir, şifre bir kez döner, varsayılan program oluşur', async () => {
+  it('yöneticinin belirlediği şifreyle eklenen berber GİRİŞ YAPABİLİR', async () => {
+    // Bu testin asıl işi bu satır: eklenen berber panele girebilmeli.
+    // Canlıda kırılan tam olarak buydu — berber eklendi ama giremedi, çünkü
+    // sistemin ürettiği şifre bir kez gösterilip kayboluyordu.
     const email = `yeni-${Date.now()}@test.local`;
+    const sifre = 'berber-sifre-2026';
+
     const res = await request(app)
       .post(BASE)
       .set(auth(adminToken))
-      .send({ name: 'Yeni Berber', email, role: 'staff' });
+      .send({ name: 'Yeni Berber', email, password: sifre, role: 'staff' });
 
     expect(res.status).toBe(201);
     expect(res.body.barber.email).toBe(email);
-    expect(typeof res.body.password).toBe('string');
-    expect(res.body.password.length).toBeGreaterThan(10);
+
+    // ⚠️ Şifre yanıtta DÖNMEMELİ: gönderen zaten biliyor, ağda ikinci kez
+    // dolaşmasının bir faydası yok.
+    expect(res.body.password).toBeUndefined();
 
     const hours = await testPrisma.workingHours.findMany({ where: { barberId: res.body.barber.id } });
     expect(hours).toHaveLength(7);
     expect(hours.find((h) => h.dayOfWeek === 0)?.isWorking).toBe(false);
     expect(hours.find((h) => h.dayOfWeek === 1)?.isWorking).toBe(true);
 
-    // Gerçekten giriş yapılabiliyor mu?
-    const login = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email, password: res.body.password });
+    const login = await request(app).post('/api/v1/auth/login').send({ email, password: sifre });
     expect(login.status).toBe(200);
+    expect(login.body.barber.email).toBe(email);
 
     await testPrisma.workingHours.deleteMany({ where: { barberId: res.body.barber.id } });
+    await testPrisma.refreshToken.deleteMany({ where: { barberId: res.body.barber.id } });
     await testPrisma.barber.delete({ where: { id: res.body.barber.id } });
+  });
+
+  it('çok kısa şifre reddedilir', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({
+        name: 'Zayıf Şifre',
+        email: `zayif-${Date.now()}@test.local`,
+        password: '123',
+        role: 'staff',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('şifresiz istek reddedilir', async () => {
+    const res = await request(app)
+      .post(BASE)
+      .set(auth(adminToken))
+      .send({ name: 'Şifresiz', email: `sifresiz-${Date.now()}@test.local`, role: 'staff' });
+
+    expect(res.status).toBe(400);
   });
 
   it('staff yeni berber ekleyemez', async () => {
     const res = await request(app)
       .post(BASE)
       .set(auth(staffToken))
-      .send({ name: 'Yeni Berber 2', email: `yeni2-${Date.now()}@test.local`, role: 'staff' });
+      .send({
+        name: 'Yeni Berber 2',
+        email: `yeni2-${Date.now()}@test.local`,
+        password: 'berber-sifre-2026',
+        role: 'staff',
+      });
 
     expect(res.status).toBe(403);
   });
@@ -199,7 +233,7 @@ describe('POST /barbers — yeni berber ekleme', () => {
     const res = await request(app)
       .post(BASE)
       .set(auth(adminToken))
-      .send({ name: 'Tekrar', email: fx.staffEmail, role: 'staff' });
+      .send({ name: 'Tekrar', email: fx.staffEmail, password: 'berber-sifre-2026', role: 'staff' });
 
     expect(res.status).toBe(400);
   });

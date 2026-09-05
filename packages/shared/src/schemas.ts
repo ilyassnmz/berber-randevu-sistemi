@@ -310,9 +310,33 @@ export type CreateTimeOffInput = z.infer<typeof createTimeOffSchema>;
 
 // ─── Berber ─────────────────────────────────────────────
 
+/**
+ * Yeni berber ekleme.
+ *
+ * ⚠️ Şifreyi YÖNETİCİ belirliyor, sistem üretmiyor — bilinçli bir değişiklik.
+ *
+ * Önce sistem rastgele bir şifre üretip ekranda BİR KEZ gösteriyordu. Doğru
+ * bir güvenlik ilkesiydi (şifre saklanmaz, geri döndürülemez) ama zorunlu
+ * tamamlayıcısı olan "sıfırlama yolu" yoktu. Sonuç canlıda görüldü: yönetici
+ * ekranı kapattı, şifre kayboldu ve eklenen berber panele hiç giremedi —
+ * düzeltmenin tek yolu sunucuya SSH ile bağlanmaktı.
+ *
+ * Şifreyi yöneticinin belirlemesi bu sorunu kaynağında bitiriyor: şifreyi
+ * zaten o seçtiği için kaybolacak bir sır yok, berbere sözlü olarak
+ * söyleyebiliyor.
+ *
+ * ⚠️ `email` gerçek bir posta kutusu OLMAK ZORUNDA DEĞİL — sistem hiç
+ * e-posta göndermiyor. Yalnızca giriş adı olarak kullanılıyor ve dükkan
+ * içinde benzersiz olması gerekiyor.
+ */
 export const createBarberSchema = z.object({
   name: z.string().trim().min(1, 'Ad gerekli').max(120),
   email: z.string().trim().toLowerCase().email('Geçerli bir e-posta giriniz'),
+  /** Sınır `changePasswordSchema` ile aynı; iki yerde farklı kural olmamalı. */
+  password: z
+    .string()
+    .min(10, 'Şifre en az 10 karakter olmalı')
+    .max(200, 'Şifre çok uzun'),
   role: z.nativeEnum(BARBER_ROLE).default(BARBER_ROLE.STAFF),
 });
 export type CreateBarberInput = z.infer<typeof createBarberSchema>;

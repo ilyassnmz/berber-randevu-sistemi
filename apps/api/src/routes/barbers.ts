@@ -81,7 +81,13 @@ barbersRouter.post(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const input = createBarberSchema.parse(req.body);
-    const result = await createBarber(req.auth!.shopId, input.name, input.email, input.role);
+    const result = await createBarber(
+      req.auth!.shopId,
+      input.name,
+      input.email,
+      input.password,
+      input.role,
+    );
 
     // Yeni berber sitedeki berber listesine girmeli (bkz. public-booking.ts).
     publicShopInfoOnbelleginiDusur();

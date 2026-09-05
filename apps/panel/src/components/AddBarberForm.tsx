@@ -1,32 +1,45 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { createBarber } from '../lib/endpoints';
 import { ApiError } from '../lib/api';
 import type { BarberRole } from '../lib/types';
 
+/** Şifre kuralı sunucudakiyle aynı (`createBarberSchema`). */
+const MIN_SIFRE = 10;
+
 /**
  * Yeni berber ekleme (yalnızca admin görür — SettingsPage bunu kontrol eder).
  *
- * Şifre `seed.ts`/`reset-password.ts` ile aynı mantıkla üretilir ve BİR KEZ
- * gösterilir — argon2id geri alınamaz, bir daha görüntülenemez.
+ * ⚠️ Şifreyi YÖNETİCİ belirliyor; sistem rastgele üretip göstermiyor.
+ *
+ * Eski davranış rastgele bir şifre üretip ekranda BİR KEZ gösteriyordu.
+ * Kullanımda çöktü: yönetici ekranı kapatınca şifre kayboluyor ve geri
+ * getirmenin hiçbir yolu kalmıyordu. Canlıda yaşandı — eklenen berber panele
+ * hiç giremedi, düzeltmek için sunucuya bağlanmak gerekti.
+ *
+ * Şifreyi yöneticinin yazması bunu kaynağında bitiriyor: kaybolacak bir sır
+ * yok, çünkü şifreyi zaten o seçiyor ve berbere kendisi söylüyor.
  */
 export function AddBarberForm() {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordAgain, setPasswordAgain] = useState('');
   const [role, setRole] = useState<BarberRole>('staff');
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ name: string; email: string; password: string } | null>(
-    null,
-  );
+  const [eklenen, setEklenen] = useState<{ name: string; email: string } | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => createBarber({ name: name.trim(), email: email.trim(), role }),
+    mutationFn: () =>
+      createBarber({ name: name.trim(), email: email.trim(), password, role }),
     onSuccess: (data) => {
-      setResult({ name: data.barber.name, email: data.barber.email, password: data.password });
+      setEklenen({ name: data.barber.name, email: data.barber.email });
       setName('');
       setEmail('');
+      setPassword('');
+      setPasswordAgain('');
       setRole('staff');
       void queryClient.invalidateQueries({ queryKey: ['barbers'] });
     },
@@ -36,33 +49,45 @@ export function AddBarberForm() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
     if (!name.trim() || !email.trim()) {
-      setError('Ad ve e-posta gerekli');
+      setError('Ad ve giriş adresi gerekli');
       return;
     }
+    if (password.length < MIN_SIFRE) {
+      setError(`Şifre en az ${MIN_SIFRE} karakter olmalı`);
+      return;
+    }
+    // ⚠️ İkinci alan gösteriş değil: yazım hatası olan bir şifre, berberin
+    // panele hiç girememesi demek — ve yönetici yanlış yazdığını ancak
+    // berber denediğinde öğrenir.
+    if (password !== passwordAgain) {
+      setError('Şifreler birbirini tutmuyor');
+      return;
+    }
+
     mutation.mutate();
   }
 
-  if (result) {
+  if (eklenen) {
     return (
       <div>
-        <div className="form-error" role="alert" style={{ background: 'var(--danger-bg)', marginBottom: 12 }}>
-          <AlertTriangle size={15} aria-hidden /> Bu şifre bir daha gösterilmeyecek — hemen bir parola yöneticisine kaydedin.
+        <div className="notice notice-info" role="status">
+          <Check size={17} aria-hidden />
+          <span>
+            <strong>{eklenen.name}</strong> eklendi. Panele{' '}
+            <strong>{eklenen.email}</strong> ve az önce belirlediğiniz şifreyle
+            girebilir. Şifreyi kendisine iletmeyi unutmayın — dilerse
+            Ayarlar’dan değiştirebilir.
+          </span>
         </div>
-        <div className="detail-row">
-          <span>Ad</span>
-          <strong>{result.name}</strong>
-        </div>
-        <div className="detail-row">
-          <span>E-posta</span>
-          <strong>{result.email}</strong>
-        </div>
-        <div className="detail-row">
-          <span>Şifre</span>
-          <strong style={{ fontFamily: 'monospace' }}>{result.password}</strong>
-        </div>
-        <button type="button" className="btn btn-secondary btn-block" style={{ marginTop: 16 }} onClick={() => setResult(null)}>
-          Kaydettim, kapat
+        <button
+          type="button"
+          className="btn btn-secondary btn-block"
+          style={{ marginTop: 12 }}
+          onClick={() => setEklenen(null)}
+        >
+          Yeni berber ekle
         </button>
       </div>
     );
@@ -74,10 +99,52 @@ export function AddBarberForm() {
         <span>Ad Soyad</span>
         <input value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
+
       <label className="field">
-        <span>E-posta</span>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <span>Giriş adresi</span>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="ornek@ozdede.com"
+          autoComplete="off"
+          required
+        />
+        {/* Sık karışan nokta: buraya yazılan adrese hiçbir zaman e-posta
+            gönderilmiyor. Gerçek bir posta kutusu olması gerekmiyor. */}
+        <span className="field-hint">
+          Berberin panele girerken yazacağı adres. Gerçek bir e-posta kutusu
+          olmak zorunda değil — sisteme mail gönderilmiyor.
+        </span>
       </label>
+
+      <label className="field">
+        <span>Şifre</span>
+        <input
+          type="text"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          minLength={MIN_SIFRE}
+          autoComplete="new-password"
+          required
+        />
+        <span className="field-hint">
+          En az {MIN_SIFRE} karakter. Berbere siz ileteceksiniz, o da isterse
+          sonradan değiştirebilir.
+        </span>
+      </label>
+
+      <label className="field">
+        <span>Şifre (tekrar)</span>
+        <input
+          type="text"
+          value={passwordAgain}
+          onChange={(e) => setPasswordAgain(e.target.value)}
+          autoComplete="new-password"
+          required
+        />
+      </label>
+
       <label className="field">
         <span>Rol</span>
         <select value={role} onChange={(e) => setRole(e.target.value as BarberRole)}>
