@@ -727,7 +727,9 @@ svg {
     grid-template-columns: 1fr 1fr auto;
   }
 
-  .service-row-name {
+  /* Ad alanı tam satır: dar telefonda süre ve fiyatla yan yana sığmıyor. */
+  .service-row-name,
+  .service-row-name-field {
     grid-column: 1 / -1;
     padding-bottom: 0;
   }
@@ -1325,4 +1327,79 @@ svg {
   display: block;
   font-size: 12px;
   color: var(--text-faint);
+}
+
+/* ── Berber yönetimi ─────────────────────────────────────
+   Hizmet satırıyla aynı ızgara mantığı; tek farkı e-posta ve durum
+   rozetleri için üstte tam genişlikte bir başlık satırı olması. */
+.barber-row {
+  display: grid;
+  grid-template-columns: 1fr 130px auto auto;
+  align-items: end;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.barber-row:last-of-type {
+  border-bottom: none;
+}
+
+/* Kapatılmış berber görsel olarak geri çekiliyor ama okunabilir kalıyor —
+   tekrar açılabilmesi için listede durması gerekiyor. */
+.barber-row.pasif {
+  opacity: 0.62;
+}
+
+.barber-row-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.barber-row-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barber-row-badge {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.barber-row-badge.kendisi {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.barber-row-toggle {
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.barber-row.pasif .barber-row-toggle {
+  color: var(--success);
+}
+
+@media (max-width: 420px) {
+  .barber-row {
+    grid-template-columns: 1fr 1fr auto;
+  }
+
+  .barber-row-name {
+    grid-column: 1 / -1;
+  }
 }

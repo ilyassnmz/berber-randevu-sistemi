@@ -13,6 +13,7 @@ import type { Service } from '../lib/types';
  * yoktu, fiyatlar da boştu. "Boyama 90 dakika" demek artık tek bir düzenleme.
  */
 interface ServiceDraft {
+  name: string;
   durationMin: string;
   price: string;
   /** "Ayrı zaman ister" — bkz. @berber/shared → duration.ts. */
@@ -42,6 +43,7 @@ export function ServicesEditor() {
   function draftFor(s: Service): ServiceDraft {
     return (
       drafts[s.id] ?? {
+        name: s.name,
         durationMin: String(s.durationMin),
         price: s.price ?? '',
         requiresOwnSlot: s.requiresOwnSlot ?? false,
@@ -52,6 +54,7 @@ export function ServicesEditor() {
   function setDraft(id: string, patch: Partial<ServiceDraft>) {
     const service = services.find((s) => s.id === id);
     const current = drafts[id] ?? {
+      name: service?.name ?? '',
       durationMin: String(service?.durationMin ?? 45),
       price: service?.price ?? '',
       requiresOwnSlot: service?.requiresOwnSlot ?? false,
@@ -66,7 +69,7 @@ export function ServicesEditor() {
       // Boş fiyat = "fiyat belirtilmemiş" (null), 0 ile karıştırılmamalı.
       const price = draft.price.trim() === '' ? null : Number(draft.price);
       return updateService(service.id, {
-        name: service.name,
+        name: draft.name.trim(),
         durationMin: duration,
         price,
         requiresOwnSlot: draft.requiresOwnSlot,
@@ -154,7 +157,15 @@ export function ServicesEditor() {
         const draft = draftFor(s);
         return (
           <div className="service-row" key={s.id}>
-            <span className="service-row-name">{s.name}</span>
+            <label className="service-row-field service-row-name-field">
+              <span>Hizmet adı</span>
+              <input
+                type="text"
+                value={draft.name}
+                maxLength={80}
+                onChange={(e) => setDraft(s.id, { name: e.target.value })}
+              />
+            </label>
             <label className="service-row-field">
               <span>Süre (dk)</span>
               <input

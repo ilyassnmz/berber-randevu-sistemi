@@ -44,6 +44,28 @@ servicesRouter.put(
     });
     if (!existing) throw new NotFoundError('Hizmet bulunamadı');
 
+    // ⚠️ Ad değiştirilebiliyor, dolayısıyla ÇAKIŞMA kontrolü burada da gerekli.
+    //
+    // Ekleme ucunda bu kontrol baştan beri vardı ama güncellemede yoktu:
+    // ad alanı panelde salt okunur olduğu için çakışma imkânsızdı. Ad
+    // düzenlenebilir hale gelince eksiklik gerçek bir soruna dönüştü —
+    // veritabanındaki `@@unique([shopId, name])` kısıtı isteği 500 ile
+    // düşürürdü. Kısıt yine son savunma; buradaki kontrol kullanıcıya
+    // anlaşılır bir mesaj vermek için.
+    if (input.name.toLowerCase() !== existing.name.toLowerCase()) {
+      const ayniIsim = await prisma.service.findFirst({
+        where: {
+          shopId: req.auth!.shopId,
+          name: { equals: input.name, mode: 'insensitive' },
+          id: { not: existing.id },
+        },
+      });
+
+      if (ayniIsim) {
+        throw new ConflictError('Bu isimde bir hizmet zaten var.', 'SERVICE_NAME_TAKEN');
+      }
+    }
+
     const service = await prisma.service.update({
       where: { id: existing.id },
       data: {

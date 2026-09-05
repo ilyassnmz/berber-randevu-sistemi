@@ -3,6 +3,7 @@ import type {
   Appointment,
   AuthBarber,
   Barber,
+  BarberAdmin,
   Service,
   Slot,
   AppointmentStatus,
@@ -164,6 +165,24 @@ export function createBarber(input: { name: string; email: string; role: BarberR
     method: 'POST',
     body: input,
   });
+}
+
+/**
+ * Yönetim listesi — pasif berberler dahil.
+ *
+ * ⚠️ Takvim sekmeleri `fetchBarbers()` kullanmaya devam etmeli; bu uç
+ * yalnızca Ayarlar ekranı için. Pasif bir berber takvimde sekme açmamalı.
+ */
+export function fetchAllBarbers() {
+  return apiRequest<{ barbers: BarberAdmin[] }>('/barbers/all');
+}
+
+/** Berberin adını, rolünü ve aktifliğini günceller (yalnızca admin). */
+export function updateBarber(
+  id: string,
+  input: { name: string; role: BarberRole; isActive: boolean },
+) {
+  return apiRequest<{ barber: BarberAdmin }>(`/barbers/${id}`, { method: 'PUT', body: input });
 }
 
 // ─── Müşteri ─────────────────────────────────────────────

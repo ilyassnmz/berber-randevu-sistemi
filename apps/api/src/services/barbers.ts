@@ -157,3 +157,107 @@ export async function createBarber(
     password,
   };
 }
+
+// ─── Berber düzenleme / pasife alma ─────────────────────
+
+/**
+ * Berberin adını, rolünü ve aktifliğini günceller — yalnızca admin.
+ *
+ * ── Neden silme yok, pasife alma var? ────────────────────────────
+ *
+ * `appointments.barber_id` üzerinde `onDelete: Restrict` var: randevusu olan
+ * bir berber veritabanı seviyesinde zaten silinemez. Silinebilseydi de
+ * istemezdik — geçmiş randevunun kime ait olduğu okunabilir kalmalı.
+ *
+ * ── Üç koruma ────────────────────────────────────────────────────
+ *
+ * Üçü de "çalışan sistemi bozmama" amacında ve üçü de gerçek bir senaryodan
+ * geliyor:
+ *
+ *   1. SON AKTİF ADMİN pasife alınamaz / staff'a düşürülemez. Aksi halde
+ *      dükkanda hiç yönetici kalmaz: yeni berber eklemek, hizmet düzenlemek
+ *      ve bu ekranı açmak mümkün olmaz. Geri dönüşü ancak veritabanından
+ *      elle müdahaleyle olurdu.
+ *
+ *   2. KENDİNİ pasife alamazsın. Teknik olarak 1. kural çoğu durumda bunu
+ *      zaten engelliyor, ama iki admin varken kendini kapatıp panelden
+ *      düşmek hâlâ mümkün olurdu — ve bu, kullanıcının istediği şey değil,
+ *      yanlışlıkla yaptığı şeydir.
+ *
+ *   3. GELECEK RANDEVUSU OLAN berber pasife alınamaz. Sebebi görünmez ve
+ *      ciddi: panel berber sekmelerini `GET /barbers` üzerinden kuruyor ve o
+ *      uç yalnızca aktifleri döndürüyor. Pasife alınan berberin sekmesi
+ *      kaybolur, dolayısıyla gelecek randevuları PANELDE GÖRÜNMEZ hale
+ *      gelir — müşteri kapıya gelir, sistemde iz yoktur. Bu yüzden önce
+ *      randevuların taşınması ya da iptal edilmesi gerekiyor; kaç tane
+ *      olduğunu da hata mesajında söylüyoruz.
+ */
+export async function updateBarber(
+  shopId: string,
+  barberId: string,
+  input: { name: string; role: 'admin' | 'staff'; isActive: boolean },
+  auth: AuthContext,
+) {
+  const barber = await prisma.barber.findFirst({ where: { id: barberId, shopId } });
+  if (!barber) throw new NotFoundError('Berber bulunamadı');
+
+  const yetkisiKalkiyor = barber.role === 'admin' && (input.role !== 'admin' || !input.isActive);
+
+  if (yetkisiKalkiyor) {
+    const digerAktifAdmin = await prisma.barber.count({
+      where: { shopId, role: 'admin', isActive: true, id: { not: barberId } },
+    });
+
+    if (digerAktifAdmin === 0) {
+      throw new ValidationError(
+        'Dükkandaki son yöneticiyi kapatamaz ya da yetkisini alamazsınız. ' +
+          'Önce başka bir berbere yönetici yetkisi verin.',
+      );
+    }
+  }
+
+  if (!input.isActive && barberId === auth.barberId) {
+    throw new ValidationError('Kendi hesabınızı kapatamazsınız.');
+  }
+
+  if (barber.isActive && !input.isActive) {
+    const gelecekRandevu = await prisma.appointment.count({
+      where: {
+        barberId,
+        startsAt: { gte: new Date() },
+        status: { in: ['pending_confirm', 'confirmed'] },
+      },
+    });
+
+    if (gelecekRandevu > 0) {
+      throw new ValidationError(
+        `${barber.name} için ${gelecekRandevu} adet gelecek randevu var. ` +
+          'Berberi kapatmadan önce bu randevuları iptal edin ya da başka bir ' +
+          'berbere taşıyın — aksi halde panelde görünmez hale gelirler.',
+      );
+    }
+  }
+
+  const guncel = await prisma.barber.update({
+    where: { id: barberId },
+    data: { name: input.name, role: input.role, isActive: input.isActive },
+    select: { id: true, name: true, email: true, role: true, isActive: true },
+  });
+
+  return guncel;
+}
+
+/**
+ * Dükkandaki berberler — pasifler dahil.
+ *
+ * `GET /barbers` bilerek yalnızca aktifleri dönüyor (takvim sekmeleri, walk-in
+ * formu). Ama yönetim ekranı pasifleri de görmek zorunda; aksi halde kapatılan
+ * bir berber geri açılamaz, listeden tamamen kaybolur.
+ */
+export async function listAllBarbers(shopId: string) {
+  return prisma.barber.findMany({
+    where: { shopId },
+    select: { id: true, name: true, email: true, role: true, isActive: true },
+    orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+  });
+}

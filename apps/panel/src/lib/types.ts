@@ -16,6 +16,21 @@ export interface Barber {
   role: BarberRole;
 }
 
+/**
+ * Yönetim ekranındaki berber satırı — `GET /barbers/all` yanıtı.
+ *
+ * Takvimdeki `Barber`'dan farkı: pasif berberleri de kapsıyor ve e-posta
+ * içeriyor. Takvim sekmeleri bu tipi KULLANMAMALI; oraya pasif bir berber
+ * düşerse artık çalışmayan biri için sekme belirir.
+ */
+export interface BarberAdmin {
+  id: string;
+  name: string;
+  email: string;
+  role: BarberRole;
+  isActive: boolean;
+}
+
 export interface AuthBarber {
   id: string;
   shopId: string;

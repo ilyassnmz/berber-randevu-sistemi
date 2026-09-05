@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { workingHoursSchema, createTimeOffSchema, createBarberSchema } from '@berber/shared';
+import {
+  workingHoursSchema,
+  createTimeOffSchema,
+  createBarberSchema,
+  updateBarberSchema,
+} from '@berber/shared';
 import { prisma } from '../db/client.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
@@ -10,6 +15,8 @@ import {
   createTimeOff,
   deleteTimeOff,
   createBarber,
+  updateBarber,
+  listAllBarbers,
 } from '../services/barbers.js';
 import { publicShopInfoOnbelleginiDusur } from '../services/public-booking.js';
 
@@ -35,6 +42,36 @@ barbersRouter.get(
     });
 
     res.json({ barbers });
+  }),
+);
+
+/**
+ * Yönetim listesi — pasif berberler DAHİL. Yalnızca admin.
+ *
+ * Yukarıdaki `GET /` bilerek yalnızca aktifleri döner (takvim sekmeleri,
+ * walk-in formu böyle çalışmalı). Yönetim ekranı ise pasifleri de görmek
+ * zorunda; görmezse kapatılan bir berber geri açılamaz.
+ */
+barbersRouter.get(
+  '/all',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const barbers = await listAllBarbers(req.auth!.shopId);
+    res.json({ barbers });
+  }),
+);
+
+/** Berberin adını, rolünü ve aktifliğini günceller — yalnızca admin. */
+barbersRouter.put(
+  '/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const input = updateBarberSchema.parse(req.body);
+    const barber = await updateBarber(req.auth!.shopId, req.params.id!, input, req.auth!);
+
+    // Ad ve aktiflik sitedeki berber listesini etkiliyor.
+    publicShopInfoOnbelleginiDusur();
+    res.json({ barber });
   }),
 );
 

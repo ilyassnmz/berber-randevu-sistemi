@@ -204,3 +204,153 @@ describe('POST /barbers — yeni berber ekleme', () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * ══════════════════════════════════════════════════════════════════
+ *  BERBER DÜZENLEME VE KAPATMA
+ * ══════════════════════════════════════════════════════════════════
+ *
+ * Bu bloğun asıl işi düzenlemenin çalıştığını göstermek DEĞİL — üç korumanın
+ * çalıştığını göstermek. Üçü de "çalışan sistemi bozmama" amacında ve
+ * üçünün de bozulması sessiz olur:
+ *
+ *   * Son yönetici kapatılırsa dükkan yönetilemez hale gelir.
+ *   * Kendini kapatan admin panelden düşer.
+ *   * Gelecek randevusu olan berber kapatılırsa, sekmesi kaybolduğu için
+ *     o randevular PANELDE GÖRÜNMEZ olur — müşteri kapıya gelir, kayıt yoktur.
+ */
+describe('PUT /barbers/:id — düzenleme ve kapatma', () => {
+  it('admin, berberin adını ve yetkisini değiştirebilir', async () => {
+    const res = await request(app)
+      .put(`${BASE}/${fx.staffId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Fırat Usta', role: 'staff', isActive: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.barber.name).toBe('Fırat Usta');
+
+    // Geri al — sonraki testler fixture adını bekliyor olabilir
+    await request(app)
+      .put(`${BASE}/${fx.staffId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Çalışan', role: 'staff', isActive: true });
+  });
+
+  it('staff başka berberi düzenleyemez', async () => {
+    const res = await request(app)
+      .put(`${BASE}/${fx.adminId}`)
+      .set(auth(staffToken))
+      .send({ name: 'Ele Geçirme', role: 'admin', isActive: true });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('SON yönetici kapatılamaz', async () => {
+    const res = await request(app)
+      .put(`${BASE}/${fx.adminId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Yönetici', role: 'admin', isActive: false });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/son yöneticiyi/i);
+  });
+
+  it('SON yöneticinin yetkisi alınamaz', async () => {
+    const res = await request(app)
+      .put(`${BASE}/${fx.adminId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Yönetici', role: 'staff', isActive: true });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('admin kendi hesabını kapatamaz (ikinci yönetici olsa bile)', async () => {
+    // Önce ikinci bir yönetici oluştur ki "son yönetici" kuralı devreye girmesin
+    await request(app)
+      .put(`${BASE}/${fx.staffId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Çalışan', role: 'admin', isActive: true })
+      .expect(200);
+
+    const res = await request(app)
+      .put(`${BASE}/${fx.adminId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Yönetici', role: 'admin', isActive: false });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/kendi hesabınızı/i);
+
+    // Eski haline döndür
+    await request(app)
+      .put(`${BASE}/${fx.staffId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Çalışan', role: 'staff', isActive: true })
+      .expect(200);
+  });
+
+  it('GELECEK randevusu olan berber kapatılamaz', async () => {
+    const gelecek = new Date();
+    gelecek.setUTCDate(gelecek.getUTCDate() + 3);
+    gelecek.setUTCHours(9, 0, 0, 0);
+
+    const randevu = await testPrisma.appointment.create({
+      data: {
+        shopId: fx.shopId,
+        barberId: fx.staffId,
+        customerId: fx.customerId,
+        serviceId: fx.serviceId,
+        startsAt: gelecek,
+        endsAt: new Date(gelecek.getTime() + 45 * 60_000),
+        status: 'confirmed',
+        source: 'panel',
+      },
+    });
+
+    try {
+      const res = await request(app)
+        .put(`${BASE}/${fx.staffId}`)
+        .set(auth(adminToken))
+        .send({ name: 'Test Çalışan', role: 'staff', isActive: false });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toMatch(/gelecek randevu/i);
+
+      // Berber HÂLÂ aktif olmalı — kural reddetmiş olmalı, yarım uygulamamış
+      const kayit = await testPrisma.barber.findUnique({ where: { id: fx.staffId } });
+      expect(kayit?.isActive).toBe(true);
+    } finally {
+      await testPrisma.appointment.delete({ where: { id: randevu.id } });
+    }
+  });
+
+  it('gelecek randevusu olmayan berber kapatılıp tekrar açılabilir', async () => {
+    const kapat = await request(app)
+      .put(`${BASE}/${fx.staffId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Çalışan', role: 'staff', isActive: false });
+
+    expect(kapat.status).toBe(200);
+    expect(kapat.body.barber.isActive).toBe(false);
+
+    // Kapalı berber takvim listesinden düşmeli...
+    const aktifler = await request(app).get(BASE).set(auth(adminToken)).expect(200);
+    expect(aktifler.body.barbers.map((b: { id: string }) => b.id)).not.toContain(fx.staffId);
+
+    // ...ama yönetim listesinde durmalı, yoksa geri açılamaz
+    const hepsi = await request(app).get(`${BASE}/all`).set(auth(adminToken)).expect(200);
+    expect(hepsi.body.barbers.map((b: { id: string }) => b.id)).toContain(fx.staffId);
+
+    const ac = await request(app)
+      .put(`${BASE}/${fx.staffId}`)
+      .set(auth(adminToken))
+      .send({ name: 'Test Çalışan', role: 'staff', isActive: true });
+
+    expect(ac.status).toBe(200);
+    expect(ac.body.barber.isActive).toBe(true);
+  });
+
+  it('staff yönetim listesini göremez', async () => {
+    const res = await request(app).get(`${BASE}/all`).set(auth(staffToken));
+    expect(res.status).toBe(403);
+  });
+});

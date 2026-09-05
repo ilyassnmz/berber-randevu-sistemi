@@ -317,6 +317,25 @@ export const createBarberSchema = z.object({
 });
 export type CreateBarberInput = z.infer<typeof createBarberSchema>;
 
+/**
+ * Berber düzenleme.
+ *
+ * ⚠️ E-POSTA burada YOK — bilerek. E-posta aynı zamanda giriş kimliği ve
+ * `refresh_token` kayıtları o hesaba bağlı; değiştirmek berberin açık
+ * oturumlarıyla ilgili ayrı bir karar gerektirir. Ad ve rol düzeltmek ise
+ * gündelik bir ihtiyaç ("Fırat" yerine "Fırat Bey" yazılmış gibi).
+ *
+ * `isActive`: berber SİLİNMEZ, pasife alınır — geçmiş randevuları hangi
+ * berbere ait olduğunu kaybetmemeli (bkz. schema.prisma → "Hiçbir şey
+ * silinmez").
+ */
+export const updateBarberSchema = z.object({
+  name: z.string().trim().min(1, 'Ad gerekli').max(120),
+  role: z.nativeEnum(BARBER_ROLE),
+  isActive: z.boolean(),
+});
+export type UpdateBarberInput = z.infer<typeof updateBarberSchema>;
+
 // ─── Hizmet ─────────────────────────────────────────────
 
 export const upsertServiceSchema = z.object({

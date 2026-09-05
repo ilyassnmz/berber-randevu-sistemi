@@ -7,6 +7,7 @@ import { fetchBarbers } from '../lib/endpoints';
 import { WorkingHoursEditor } from '../components/WorkingHoursEditor';
 import { TimeOffManager } from '../components/TimeOffManager';
 import { AddBarberForm } from '../components/AddBarberForm';
+import { BarbersEditor } from '../components/BarbersEditor';
 import { ServicesEditor } from '../components/ServicesEditor';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
 import { NotificationToggle } from '../components/NotificationToggle';
@@ -88,10 +89,23 @@ export default function SettingsPage() {
         <div className="settings-section">
           <h2>Hizmetler</h2>
           <p className="settings-section-hint">
-            Süre ve fiyat. Süre değişikliği yalnızca yeni randevuları etkiler —
-            mevcut randevular oldukları gibi kalır.
+            Ad, süre ve fiyat. Süre değişikliği yalnızca yeni randevuları
+            etkiler — mevcut randevular oldukları gibi kalır. Ad değişikliği
+            geçmiş randevularda da yeni adıyla görünür.
           </p>
           <ServicesEditor />
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="settings-section">
+          <h2>Berberler</h2>
+          <p className="settings-section-hint">
+            Ad ve yetki düzenlenebilir. Bir berberi kapattığınızda takvimden ve
+            müşteri sitesinden kalkar; geçmiş randevuları korunur ve istediğiniz
+            zaman tekrar açabilirsiniz.
+          </p>
+          <BarbersEditor />
         </div>
       )}
 
